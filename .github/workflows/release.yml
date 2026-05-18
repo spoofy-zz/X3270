@@ -69,6 +69,7 @@ jobs:
           hdiutil convert \
             "dist/${DMG_NAME}-rw.dmg" \
             -format UDZO -imagekey zlib-level=9 \
+            -ov \
             -o "dist/${DMG_NAME}.dmg" > /dev/null
 
           rm -f "dist/${DMG_NAME}-rw.dmg"
