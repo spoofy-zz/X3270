@@ -1,0 +1,89 @@
+#import "AppDelegate.h"
+#import "ConnectionWindowController.h"
+
+@implementation AppDelegate
+
+- (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    [self buildMenuBar];
+
+    _connectionWindowController = [[ConnectionWindowController alloc] init];
+    [_connectionWindowController showWindow:nil];
+}
+
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
+    return YES;
+}
+
+// ── Menu Bar ─────────────────────────────────────────────────────────────────
+- (void)buildMenuBar {
+    NSMenu *menuBar = [[NSMenu alloc] init];
+    [NSApp setMainMenu:menuBar];
+
+    // Application menu
+    NSMenuItem *appMenuItem = [[NSMenuItem alloc] init];
+    [menuBar addItem:appMenuItem];
+    NSMenu *appMenu = [[NSMenu alloc] initWithTitle:@"X3270"];
+    appMenuItem.submenu = appMenu;
+    [appMenu addItemWithTitle:@"About X3270"
+                       action:@selector(showAbout:)
+                keyEquivalent:@""];
+    [appMenu addItem:[NSMenuItem separatorItem]];
+    [appMenu addItemWithTitle:@"Preferences…"
+                       action:@selector(openPreferences:)
+                keyEquivalent:@","];
+    [appMenu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *quitItem = [appMenu addItemWithTitle:@"Quit X3270"
+                                             action:@selector(terminate:)
+                                      keyEquivalent:@"q"];
+    quitItem.target = NSApp;
+
+    // File menu
+    NSMenuItem *fileMenuItem = [[NSMenuItem alloc] init];
+    [menuBar addItem:fileMenuItem];
+    NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+    fileMenuItem.submenu = fileMenu;
+    [fileMenu addItemWithTitle:@"New Connection…"
+                        action:@selector(newConnection:)
+                 keyEquivalent:@"n"];
+
+    // Edit menu (for copy/paste system integration)
+    NSMenuItem *editMenuItem = [[NSMenuItem alloc] init];
+    [menuBar addItem:editMenuItem];
+    NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+    editMenuItem.submenu = editMenu;
+    [editMenu addItemWithTitle:@"Copy"  action:@selector(copy:)  keyEquivalent:@"c"];
+    [editMenu addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+}
+
+- (void)newConnection:(id)sender {
+    ConnectionWindowController *cwc = [[ConnectionWindowController alloc] init];
+    [cwc showWindow:nil];
+}
+
+- (void)showAbout:(id)sender {
+    NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
+    NSString *version  = info[@"CFBundleShortVersionString"] ?: @"1.0.0";
+    NSString *build    = info[@"CFBundleVersion"]            ?: @"1";
+
+    NSString *credits =
+        @"Free TN3270/TN3270E terminal emulator for macOS.\n\n"
+         "Native Cocoa · CoreText · OpenSSL\n"
+         "Supports ISPF, TSO and z/OS on IBM Mainframes.\n\n"
+         "Written by Swen Skalski\n"
+         "https://github.com/skalski/X3270";
+
+    [NSApp orderFrontStandardAboutPanelWithOptions:@{
+        @"ApplicationVersion": [NSString stringWithFormat:@"%@ (Build %@)", version, build],
+        @"Credits": [[NSAttributedString alloc]
+                        initWithString:credits
+                            attributes:@{NSFontAttributeName:
+                                [NSFont systemFontOfSize:11]}],
+        @"Copyright": @"Copyright \u00a9 2026 Swen Skalski",
+    }];
+}
+
+- (void)openPreferences:(id)sender {
+    // TODO: show PreferencesWindowController
+}
+
+@end

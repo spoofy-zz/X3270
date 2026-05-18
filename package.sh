@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# package.sh — Build X3270 in Release mode and wrap it in a distributable DMG.
+#
+# Usage:
+#   ./package.sh               # uses BUILD_NUMBER=1 (default)
+#   BUILD_NUMBER=42 ./package.sh
+#
+# Output:
+#   dist/X3270-<version>-build<BUILD_NUMBER>.dmg
+
+set -euo pipefail
+
+# ── Config ────────────────────────────────────────────────────────────────────
+APP_NAME="X3270"
+VERSION="1.0.0"
+BUILD_NUMBER="${BUILD_NUMBER:-1}"
+DMG_NAME="${APP_NAME}-${VERSION}-build${BUILD_NUMBER}"
+BUILD_DIR="$(pwd)/build_release"
+DIST_DIR="$(pwd)/dist"
+STAGING_DIR="$(mktemp -d)"
+
+echo "==> Building ${DMG_NAME}"
+echo "    Build dir : ${BUILD_DIR}"
+echo "    Output    : ${DIST_DIR}/${DMG_NAME}.dmg"
+echo ""
+
+# ── 1. Configure & build ──────────────────────────────────────────────────────
+cmake \
+    -B "${BUILD_DIR}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_NUMBER="${BUILD_NUMBER}"
+
+cmake --build "${BUILD_DIR}" --config Release --parallel "$(sysctl -n hw.logicalcpu)"
+
+APP_PATH="${BUILD_DIR}/${APP_NAME}.app"
+if [ ! -d "${APP_PATH}" ]; then
+    echo "ERROR: ${APP_PATH} not found after build" >&2
+    exit 1
+fi
+
+# ── 2. Stage the DMG contents ─────────────────────────────────────────────────
+echo ""
+echo "==> Staging DMG contents"
+cp -R "${APP_PATH}" "${STAGING_DIR}/${APP_NAME}.app"
+# Symlink to /Applications for drag-install UX
+ln -s /Applications "${STAGING_DIR}/Applications"
+
+# ── 3. Create the DMG ─────────────────────────────────────────────────────────
+mkdir -p "${DIST_DIR}"
+
+TEMP_DMG="${DIST_DIR}/${DMG_NAME}-rw.dmg"
+FINAL_DMG="${DIST_DIR}/${DMG_NAME}.dmg"
+
+echo ""
+echo "==> Creating DMG (this may take a moment)"
+
+hdiutil create \
+    -volname "${APP_NAME} ${VERSION}" \
+    -srcfolder "${STAGING_DIR}" \
+    -ov \
+    -format UDRW \
+    "${TEMP_DMG}" \
+    > /dev/null
+
+# Convert to read-only compressed image
+hdiutil convert \
+    "${TEMP_DMG}" \
+    -format UDZO \
+    -imagekey zlib-level=9 \
+    -o "${FINAL_DMG}" \
+    > /dev/null
+
+rm -f "${TEMP_DMG}"
+rm -rf "${STAGING_DIR}"
+
+# ── 4. Summary ────────────────────────────────────────────────────────────────
+DMG_SIZE=$(du -sh "${FINAL_DMG}" | cut -f1)
+echo ""
+echo "==> Done"
+echo "    ${FINAL_DMG}  (${DMG_SIZE})"
+echo ""
+echo "    Version     : ${VERSION}"
+echo "    Build number: ${BUILD_NUMBER}"
+echo ""
+echo "To install: open the DMG and drag X3270 to /Applications"

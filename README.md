@@ -1,0 +1,143 @@
+# X3270 — Free TN3270 Terminal Emulator for macOS
+
+A native macOS (ARM - Apple Silicon + Intel) TN3270/TN3270E terminal emulator for connecting to IBM Mainframes (z/OS, z/VM, z/VSE).  
+Built entirely in C++ and Objective-C++ on top of native Cocoa, CoreText and OpenSSL.  
+**No license fee. No Java. No X11.**
+
+---
+
+## Why this exists
+
+If you work with IBM Mainframes on a Mac, you've probably noticed that every halfway-decent TN3270 terminal client costs money — sometimes a *lot* of money. We're talking $50–$100+ for software that essentially emulates a 1970s text terminal. One popular commercial option charges a recurring subscription just to type on a green screen. That's absurd.
+
+There are a handful of free alternatives, but they either require Java (slow, ugly, a security nightmare), run inside X11 (no thanks), or are abandonware that hasn't been touched in a decade and breaks on every macOS release.
+
+So I built one from scratch. Native Cocoa. Native CoreText rendering. OpenSSL for TLS. Full TN3270E negotiation including ISPF Query Reply so the menus actually appear. It took a weekend of frustration and a lot of reading ancient IBM manuals — but the result is a clean, fast, free terminal that feels like it belongs on a Mac.
+
+If you work in Mainframe and you're tired of paying for the privilege, this is for you.
+
+---
+
+## Screenshot
+
+![ISPF Primary Option Menu running inside X3270](screenshots/screenshot.png)
+
+*ISPF 8.1 Primary Option Menu on z/OS — connected to IBM ZExplore mainframe at 204.90.115.200:623*
+
+---
+
+## Features
+
+| Feature | Details |
+|---|---|
+| **Protocol** | TN3270E (RFC 2355) with automatic fallback to classic TN3270 |
+| **Security** | Plain Telnet **and** implicit TLS (TLS 1.2+) on any port |
+| **Screen models** | IBM 3278 Model 2 (24 × 80) |
+| **EBCDIC code pages** | CP037 (US), CP500 (International), CP1047 (Open Systems) |
+| **UI** | Native Cocoa window, green-on-black phosphor, 600 ms cursor blink |
+| **Keyboard** | PF1–PF24, PA1–PA3, Clear, Reset, Tab/BackTab, ErEOF, Insert, arrows |
+| **Query Reply** | Responds to IBM Structured Field Read Partition Query (required for ISPF) |
+| **Rendering** | CoreText glyph metrics for pixel-perfect character grid |
+| **macOS** | 12 Monterey and later (Apple Silicon + Intel) |
+
+---
+
+## Download
+
+Pre-built DMG releases are available on the [**Releases**](../../releases) page.
+
+1. Download `X3270-<version>.dmg`
+2. Open the DMG and drag **X3270.app** to your `/Applications` folder
+3. On first launch: right-click → **Open** (macOS Gatekeeper; the app is unsigned)
+
+---
+
+## Connecting to a Mainframe
+
+1. Launch X3270 — the **Connect** dialog opens automatically
+2. Fill in:
+   | Field | Example |
+   |---|---|
+   | Host | `204.90.115.200` |
+   | Port | `623` (plain) · `992` (TLS) · `23` (standard Telnet) |
+   | SSL/TLS | check for encrypted connections |
+   | CA Bundle | path to a PEM file if using a private CA (optional) |
+   | Code Page | CP037 (US default) · CP500 · CP1047 |
+3. Click **Connect**
+
+The terminal window opens. Type your credentials at the logon screen. ISPF and TSO sessions are fully supported.
+
+---
+
+## Keyboard Map
+
+| Key | 3270 Function |
+|---|---|
+| `F1`–`F12` | PF1–PF12 |
+| `Shift`+`F1`–`F12` | PF13–PF24 |
+| `Option`+`1`/`2`/`3` | PA1 / PA2 / PA3 |
+| `Return` | Enter (AID) |
+| `Escape` | Reset (unlock keyboard) |
+| `Option`+`Escape` | Clear screen |
+| `Tab` / `Shift`+`Tab` | Next / previous field |
+| `Insert` | Toggle insert mode |
+| `Option`+`Delete` | Erase to End of Field |
+| `Option`+`E` | Erase Input (all unprotected fields) |
+| `↑` `↓` `←` `→` | Cursor movement |
+
+---
+
+## Building from Source
+
+### Prerequisites
+
+```bash
+# Xcode Command Line Tools
+xcode-select --install
+
+# Homebrew + OpenSSL
+brew install openssl@3 cmake
+```
+
+### Build
+
+```bash
+git clone https://github.com/<your-org>/X3270.git
+cd X3270
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+open build/X3270.app
+```
+
+To set an explicit build number (useful in CI):
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_NUMBER=42
+cmake --build build
+```
+
+### Package a DMG for distribution
+
+```bash
+./package.sh
+# produces: dist/X3270-1.0.0-build1.dmg
+```
+
+Pass an optional build number:
+
+```bash
+BUILD_NUMBER=42 ./package.sh
+# produces: dist/X3270-1.0.0-build42.dmg
+```
+
+---
+
+## License
+
+X3270 for macOS is released under the **MIT License**.  
+See [LICENSE](LICENSE) for the full text.
+
+Written by Swen Kalski, 2026.
+
+IBM, z/OS, ISPF, and 3270 are trademarks of IBM Corporation.  
+This project is not affiliated with or endorsed by IBM.
