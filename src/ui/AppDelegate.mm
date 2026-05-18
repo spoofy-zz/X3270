@@ -62,7 +62,7 @@
 
 - (void)showAbout:(id)sender {
     NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-    NSString *version  = info[@"CFBundleShortVersionString"] ?: @"1.0.0";
+    NSString *version  = info[@"CFBundleShortVersionString"] ?: @"1.0.1";
     NSString *build    = info[@"CFBundleVersion"]            ?: @"1";
 
     NSString *credits =

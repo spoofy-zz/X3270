@@ -193,7 +193,7 @@ static const int kOIARows = 2;
     static dispatch_once_t vOnce;
     dispatch_once(&vOnce, ^{
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.0.0";
+        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.0.1";
         NSString *b = info[@"CFBundleVersion"] ?: @"1";
         versionStr = [NSString stringWithFormat:@"X3270 v%@ build %@  \u2014  \u00a9 2026 Swen Skalski", v, b];
     });

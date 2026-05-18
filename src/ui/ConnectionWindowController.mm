@@ -15,7 +15,7 @@
 
 - (instancetype)init {
     NSWindow *win = [[NSWindow alloc]
-                     initWithContentRect:NSMakeRect(0, 0, 420, 260)
+                     initWithContentRect:NSMakeRect(0, 0, 420, 350)
                                styleMask:NSWindowStyleMaskTitled
                                         |NSWindowStyleMaskClosable
                                         |NSWindowStyleMaskMiniaturizable
@@ -36,8 +36,45 @@
 - (void)buildUI {
     NSView *cv = self.window.contentView;
     CGFloat margin = 20;
+    CGFloat hdrW = 380;
     CGFloat labelW = 100, fieldW = 240, rowH = 24, gap = 10;
     __block CGFloat curY = 220;
+
+    // ── Header: app name, version and author ──────────────────────────────────
+    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.0.1";
+
+    NSTextField *appName = [NSTextField labelWithString:@"X3270"];
+    appName.font = [NSFont boldSystemFontOfSize:16];
+    appName.alignment = NSTextAlignmentCenter;
+    appName.frame = NSMakeRect(margin, 314, hdrW, 24);
+    [cv addSubview:appName];
+
+    NSTextField *appSubtitle = [NSTextField labelWithString:
+        [NSString stringWithFormat:@"TN3270 Terminal Emulator  \u2013  v%@", version]];
+    appSubtitle.font = [NSFont systemFontOfSize:11];
+    appSubtitle.textColor = [NSColor secondaryLabelColor];
+    appSubtitle.alignment = NSTextAlignmentCenter;
+    appSubtitle.frame = NSMakeRect(margin, 294, hdrW, 16);
+    [cv addSubview:appSubtitle];
+
+    NSMutableAttributedString *linkTitle = [[NSMutableAttributedString alloc]
+        initWithString:@"by Swen Kalski  \u00b7  github.com/el-dockerr/X3270"
+            attributes:@{
+                NSFontAttributeName: [NSFont systemFontOfSize:11],
+                NSForegroundColorAttributeName: [NSColor linkColor],
+            }];
+    NSButton *linkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin, 272, hdrW, 18)];
+    [linkBtn setAttributedTitle:linkTitle];
+    linkBtn.buttonType = NSButtonTypeMomentaryLight;
+    linkBtn.bordered = NO;
+    linkBtn.target = self;
+    linkBtn.action = @selector(openGitHub:);
+    linkBtn.alignment = NSTextAlignmentCenter;
+    [cv addSubview:linkBtn];
+
+    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 258, hdrW, 1)];
+    separator.boxType = NSBoxSeparator;
+    [cv addSubview:separator];
 
     // ── Helper block ──────────────────────────────────────────────────────────
     void(^addRow)(NSString*, NSView*) = ^(NSString *label, NSView *field) {
@@ -96,6 +133,11 @@
                                        12, 120, 32);
     [cv addSubview:_connectButton];
     self.window.defaultButtonCell = _connectButton.cell;
+}
+
+- (void)openGitHub:(id)sender {
+    [[NSWorkspace sharedWorkspace] openURL:
+        [NSURL URLWithString:@"https://github.com/el-dockerr/X3270"]];
 }
 
 - (void)sslToggled:(id)sender {
