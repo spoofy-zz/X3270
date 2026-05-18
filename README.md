@@ -44,7 +44,8 @@ If you work in Mainframe and you're tired of paying for the privilege, this is f
 
 ## Download
 
-Pre-built DMG releases are available on the [**Releases**](../../releases) page.
+Pre-built DMG releases are available on the [**Releases**](https://github.com/el-dockerr/X3270/releases) page.
+Every push to `main` automatically builds and publishes a new DMG via GitHub Actions.
 
 1. Download `X3270-<version>.dmg`
 2. Open the DMG and drag **X3270.app** to your `/Applications` folder
@@ -102,7 +103,7 @@ brew install openssl@3 cmake
 ### Build
 
 ```bash
-git clone https://github.com/<your-org>/X3270.git
+git clone https://github.com/el-dockerr/X3270.git
 cd X3270
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build

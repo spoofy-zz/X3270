@@ -1,0 +1,102 @@
+name: Build & Release DMG
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    name: macOS Build → DMG → GitHub Release
+    runs-on: macos-latest
+    permissions:
+      contents: write   # needed to create releases and upload assets
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Dependencies ────────────────────────────────────────────────────
+      - name: Install dependencies (Homebrew)
+        run: |
+          brew install openssl@3 cmake
+          echo "OPENSSL_ROOT=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+
+      # ── 3. Read version from CMakeLists.txt ────────────────────────────────
+      - name: Read version
+        id: version
+        run: |
+          VER=$(grep -m1 'project(X3270 VERSION' CMakeLists.txt \
+                | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "version=${VER}"              >> "$GITHUB_OUTPUT"
+          echo "build=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VER}-build${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "dmg=dist/X3270-${VER}-build${{ github.run_number }}.dmg" >> "$GITHUB_OUTPUT"
+
+      # ── 4. CMake configure ─────────────────────────────────────────────────
+      - name: Configure
+        run: |
+          cmake -B build_ci \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_NUMBER=${{ github.run_number }} \
+            -DOPENSSL_ROOT_DIR="${OPENSSL_ROOT}"
+
+      # ── 5. Build ───────────────────────────────────────────────────────────
+      - name: Build
+        run: cmake --build build_ci --config Release --parallel $(sysctl -n hw.logicalcpu)
+
+      # ── 6. Package DMG ─────────────────────────────────────────────────────
+      - name: Package DMG
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          # Override build dir so package.sh finds the right .app
+          APP_PATH="$(pwd)/build_ci/X3270.app"
+          VERSION="${{ steps.version.outputs.version }}"
+          DMG_NAME="X3270-${VERSION}-build${BUILD_NUMBER}"
+          STAGING="$(mktemp -d)"
+          mkdir -p dist
+
+          cp -R "$APP_PATH" "${STAGING}/X3270.app"
+          ln -s /Applications "${STAGING}/Applications"
+
+          hdiutil create \
+            -volname "X3270 ${VERSION}" \
+            -srcfolder "${STAGING}" \
+            -ov -format UDRW \
+            "dist/${DMG_NAME}-rw.dmg" > /dev/null
+
+          hdiutil convert \
+            "dist/${DMG_NAME}-rw.dmg" \
+            -format UDZO -imagekey zlib-level=9 \
+            -o "dist/${DMG_NAME}.dmg" > /dev/null
+
+          rm -f "dist/${DMG_NAME}-rw.dmg"
+          echo "DMG ready: dist/${DMG_NAME}.dmg"
+          ls -lh dist/
+
+      # ── 7. Create / update GitHub Release ─────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "X3270 v${{ steps.version.outputs.version }} (Build ${{ steps.version.outputs.build }})"
+          draft: false
+          prerelease: false
+          files: ${{ steps.version.outputs.dmg }}
+          body: |
+            ## X3270 v${{ steps.version.outputs.version }} — Build ${{ steps.version.outputs.build }}
+
+            Free TN3270/TN3270E terminal emulator for macOS.  
+            Built from commit ${{ github.sha }} on `main`.
+
+            ### Install
+            1. Download **X3270-${{ steps.version.outputs.version }}-build${{ steps.version.outputs.build }}.dmg**
+            2. Open the DMG and drag **X3270.app** to `/Applications`
+            3. First launch: right-click → **Open** (app is unsigned — macOS Gatekeeper)
+
+            ### Requirements
+            macOS 12 Monterey or later · Apple Silicon or Intel
+
+            ---
+            *Written by Swen Skalski · https://github.com/el-dockerr/X3270*
