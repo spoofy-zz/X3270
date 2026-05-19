@@ -19,16 +19,22 @@ bool TN3270Session::connect(const std::string& host, uint16_t port,
     }
     state_ = State::NegotiatingTelnet;
 
-    // RFC 2355: offer TN3270E first; server may accept or reject.
-    // We also proactively offer the classic options in case server goes
-    // straight to the traditional path.
-    sendWill(OPT_TN3270E);
-    sendDo(OPT_TN3270E);
-    sendWill(OPT_TERMINAL_TYPE);
-    sendWill(OPT_EOR);
-    sendWill(OPT_BINARY);
-    sendDo(OPT_BINARY);
-    sendDo(OPT_EOR);
+    // Reset all negotiation state for this (re)connection
+    willBinary_ = doBinary_ = willEOR_ = doEOR_ = false;
+    willTermType_ = doTermType_ = tn3270eMode_ = tn3270eOffered_ = false;
+    sentWillBinary_ = sentDoBinary_ = sentWillEOR_ = sentDoEOR_ = sentWillTermType_ = false;
+    sentWillTN3270E_ = sentDoTN3270E_ = false;
+
+    // RFC 2355: offer TN3270E (both directions simultaneously) and hint at
+    // terminal-type capability.  We deliberately do NOT proactively offer
+    // BINARY or EOR here: servers like z/VM interpret a proactive WILL BINARY
+    // as a request for NVT-binary mode and immediately respond DONT BINARY,
+    // permanently locking the session into NVT before the terminal type is
+    // even known.  BINARY/EOR are negotiated reactively once the server has
+    // seen our terminal type and decides to enable 3270 block mode.
+    sendWill(OPT_TN3270E);        sentWillTN3270E_ = true;
+    sendDo(OPT_TN3270E);          sentDoTN3270E_   = true;
+    sendWill(OPT_TERMINAL_TYPE);  sentWillTermType_ = true;
 
     return true;
 }
@@ -53,6 +59,7 @@ bool TN3270Session::send3270Record(const std::vector<uint8_t>& record) {
         payload = record;
     }
     auto escaped = escapeRecord(payload);
+    if (trafficCb_) trafficCb_(true, escaped);
     return transport_.send(escaped);
 }
 
@@ -68,6 +75,7 @@ void TN3270Session::readLoop() {
     while (transport_.isConnected()) {
         int n = transport_.recv(buf, sizeof(buf));
         if (n <= 0) break;
+        if (trafficCb_) trafficCb_(false, {buf, buf + n});
         for (int i = 0; i < n; ++i) {
             processByte(buf[i]);
         }
@@ -164,23 +172,32 @@ void TN3270Session::processByte(uint8_t byte) {
 void TN3270Session::processIacCommand(uint8_t cmd, uint8_t opt) {
     switch (opt) {
     case OPT_BINARY:
-        if (cmd == DO)   { doBinary_ = true;  sendWill(OPT_BINARY); }
-        else if (cmd == WILL) { willBinary_ = true; sendDo(OPT_BINARY); }
-        else if (cmd == DONT) { doBinary_ = false; }
+        if (cmd == DO) {
+            doBinary_ = true;
+            // Only respond if we haven't already sent WILL BINARY (e.g. in connect())
+            if (!sentWillBinary_) { sentWillBinary_ = true; sendWill(OPT_BINARY); }
+        } else if (cmd == WILL) {
+            willBinary_ = true;
+            if (!sentDoBinary_)   { sentDoBinary_   = true; sendDo(OPT_BINARY); }
+        } else if (cmd == DONT) { doBinary_ = false; }
         else if (cmd == WONT) { willBinary_ = false; }
         break;
 
     case OPT_EOR:
-        if (cmd == DO)   { doEOR_ = true;  sendWill(OPT_EOR); }
-        else if (cmd == WILL) { willEOR_ = true; sendDo(OPT_EOR); }
-        else if (cmd == DONT) { doEOR_ = false; }
+        if (cmd == DO) {
+            doEOR_ = true;
+            if (!sentWillEOR_) { sentWillEOR_ = true; sendWill(OPT_EOR); }
+        } else if (cmd == WILL) {
+            willEOR_ = true;
+            if (!sentDoEOR_)   { sentDoEOR_   = true; sendDo(OPT_EOR); }
+        } else if (cmd == DONT) { doEOR_ = false; }
         else if (cmd == WONT) { willEOR_ = false; }
         break;
 
     case OPT_TERMINAL_TYPE:
         if (cmd == DO) {
             doTermType_ = true;
-            sendWill(OPT_TERMINAL_TYPE);
+            if (!sentWillTermType_) { sentWillTermType_ = true; sendWill(OPT_TERMINAL_TYPE); }
         } else if (cmd == WILL) {
             // Server wants to know our type — it will SB TERMINAL-TYPE SEND
             willTermType_ = true;
@@ -188,13 +205,13 @@ void TN3270Session::processIacCommand(uint8_t cmd, uint8_t opt) {
         break;
 
     case OPT_TN3270E:
-        if (cmd == DO) {
-            // Server accepts TN3270E
+        if ((cmd == DO || cmd == WILL) && !tn3270eOffered_) {
+            // Server confirmed (DO) or offered (WILL) TN3270E — start sub-negotiation.
+            // Guard against duplicate WILL/DO in case we already sent one in connect().
             tn3270eOffered_ = true;
-            sendWill(OPT_TN3270E);
-            // Start TN3270E device-type negotiation
+            if (cmd == WILL && !sentDoTN3270E_)   { sentDoTN3270E_   = true; sendDo(OPT_TN3270E); }
+            if (cmd == DO   && !sentWillTN3270E_) { sentWillTN3270E_ = true; sendWill(OPT_TN3270E); }
             state_ = State::NegotiatingTN3270E;
-            // Send DEVICE-TYPE REQUEST
             std::vector<uint8_t> payload = {
                 OPT_TN3270E,
                 TN3270E_DEVICE_TYPE, TN3270E_REQUEST
@@ -206,7 +223,6 @@ void TN3270Session::processIacCommand(uint8_t cmd, uint8_t opt) {
         } else if (cmd == WONT || cmd == DONT) {
             // Server rejected TN3270E — fall back to traditional TN3270
             tn3270eOffered_ = false;
-            // Traditional path: wait for server to DO TERMINAL-TYPE
         }
         break;
 
@@ -217,9 +233,11 @@ void TN3270Session::processIacCommand(uint8_t cmd, uint8_t opt) {
         break;
     }
 
-    // Check if traditional TN3270 negotiation is complete
+    // Check if traditional TN3270 negotiation is complete.
+    // Only require the server→client DO options; WILL BINARY/WILL EOR may not be
+    // sent by all servers (e.g. z/VM) but binary data still arrives correctly.
     if (!tn3270eOffered_ && !tn3270eMode_) {
-        if (doBinary_ && willBinary_ && doEOR_ && willEOR_ && doTermType_) {
+        if (doBinary_ && doEOR_ && doTermType_) {
             enterDataMode();
         }
     }
@@ -232,7 +250,14 @@ void TN3270Session::processSubneg(const std::vector<uint8_t>& sb) {
     uint8_t opt = sb[0];
 
     if (opt == OPT_TERMINAL_TYPE && sb.size() >= 2 && sb[1] == 0x01 /* SEND */) {
+        // SEND subneg is the server asking for our terminal type — treat it as
+        // evidence of effective DO TERMINAL-TYPE even if that IAC was not sent.
+        doTermType_ = true;
         sendTerminalType();
+        // If classic negotiation is otherwise complete, enter data mode now.
+        if (!tn3270eOffered_ && !tn3270eMode_ && doBinary_ && doEOR_) {
+            enterDataMode();
+        }
     } else if (opt == OPT_TN3270E) {
         handleTN3270eSb(sb);
     }
@@ -256,7 +281,12 @@ void TN3270Session::handleTN3270eSb(const std::vector<uint8_t>& sb) {
         } else if (sub == TN3270E_REJECT) {
             // Server rejected our device type — fall back to classic TN3270
             tn3270eOffered_ = false;
-            sendWill(OPT_TERMINAL_TYPE);
+            tn3270eMode_    = false;
+            if (doBinary_ && doEOR_ && doTermType_) {
+                enterDataMode();
+            }
+            // If classic options not yet fully negotiated, enterDataMode()
+            // will be triggered from processIacCommand when the last DO arrives.
         }
     } else if (func == TN3270E_FUNCTIONS && sb.size() >= 3) {
         uint8_t sub = sb[2];
@@ -264,6 +294,13 @@ void TN3270Session::handleTN3270eSb(const std::vector<uint8_t>& sb) {
             // Functions agreed — we are in TN3270E mode
             tn3270eMode_ = true;
             enterDataMode();
+        } else if (sub == TN3270E_REJECT) {
+            // Server rejected function set — fall back to classic TN3270
+            tn3270eOffered_ = false;
+            tn3270eMode_ = false;
+            if (doBinary_ && doEOR_ && doTermType_) {
+                enterDataMode();
+            }
         }
     }
 }
@@ -312,6 +349,7 @@ void TN3270Session::sendSb(const std::vector<uint8_t>& payload) {
 }
 
 void TN3270Session::sendRaw(const std::vector<uint8_t>& data) {
+    if (trafficCb_) trafficCb_(true, data);
     transport_.send(data);
 }
 

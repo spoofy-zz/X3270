@@ -108,8 +108,7 @@ void KeyboardState::sendAID(uint8_t aidCode, bool includeModifiedFields) {
         record.push_back(addr[0]);
         record.push_back(addr[1]);
     }
-    if (sendCb_) sendCb_(record);
-    lock(LockReason::System);
+    if (sendCb_ && sendCb_(record)) lock(LockReason::System);
 }
 
 void KeyboardState::sendPAKey(uint8_t aidCode) {
@@ -119,7 +118,9 @@ void KeyboardState::sendPAKey(uint8_t aidCode) {
 // ── Key handlers ──────────────────────────────────────────────────────────────
 bool KeyboardState::handleChar(uint8_t asciiChar) {
     if (isLocked()) {
-        if (lockReason_ != LockReason::OErr)
+        // Only escalate to OErr when we're in a normal System lock;
+        // Connecting and OErr states must not be overwritten.
+        if (lockReason_ == LockReason::System)
             lock(LockReason::OErr);
         return false;
     }
@@ -149,8 +150,7 @@ bool KeyboardState::handleClear() {
     screen_.eraseAll();
     if (sendCb_) {
         std::vector<uint8_t> record = { AID_CLEAR, 0x40, 0x40 }; // cursor at 0,0 encoded
-        sendCb_(record);
-        lock(LockReason::System);
+        if (sendCb_(record)) lock(LockReason::System);
     }
     return true;
 }

@@ -53,6 +53,17 @@
     editMenuItem.submenu = editMenu;
     [editMenu addItemWithTitle:@"Copy"  action:@selector(copy:)  keyEquivalent:@"c"];
     [editMenu addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+
+    // Debug menu
+    NSMenuItem *debugMenuItem = [[NSMenuItem alloc] init];
+    [menuBar addItem:debugMenuItem];
+    NSMenu *debugMenu = [[NSMenu alloc] initWithTitle:@"Debug"];
+    debugMenuItem.submenu = debugMenu;
+    NSMenuItem *trafficItem =
+        [debugMenu addItemWithTitle:@"Traffic Monitor"
+                             action:@selector(openDebugWindow:)
+                      keyEquivalent:@"D"];   // ⌘⇧D (uppercase = Shift included)
+    trafficItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
 }
 
 - (void)newConnection:(id)sender {
@@ -62,7 +73,7 @@
 
 - (void)showAbout:(id)sender {
     NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-    NSString *version  = info[@"CFBundleShortVersionString"] ?: @"1.0.1";
+    NSString *version  = info[@"CFBundleShortVersionString"] ?: @"1.0.2";
     NSString *build    = info[@"CFBundleVersion"]            ?: @"1";
 
     NSString *credits =

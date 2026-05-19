@@ -58,9 +58,12 @@ public:
 
     // Called with each complete 3270 record (IAC EOR stripped, IAC IAC unescaped).
     // For TN3270E mode the 5-byte header is still prepended.
-    using DataCallback     = std::function<void(const std::vector<uint8_t>&)>;
+    using DataCallback      = std::function<void(const std::vector<uint8_t>&)>;
     using ConnectedCallback = std::function<void()>;
-    using ErrorCallback    = std::function<void(const std::string&)>;
+    using ErrorCallback     = std::function<void(const std::string&)>;
+    /// Called with every raw TCP chunk (tx=true → sent, tx=false → received).
+    /// Includes all Telnet negotiation bytes as well as 3270 data records.
+    using TrafficCallback   = std::function<void(bool tx, const std::vector<uint8_t>&)>;
 
     TN3270Session();
     ~TN3270Session();
@@ -68,9 +71,10 @@ public:
     TN3270Session(const TN3270Session&) = delete;
     TN3270Session& operator=(const TN3270Session&) = delete;
 
-    void setDataCallback(DataCallback cb)      { dataCb_      = std::move(cb); }
+    void setDataCallback(DataCallback cb)           { dataCb_      = std::move(cb); }
     void setConnectedCallback(ConnectedCallback cb) { connectedCb_ = std::move(cb); }
-    void setErrorCallback(ErrorCallback cb)    { errorCb_     = std::move(cb); }
+    void setErrorCallback(ErrorCallback cb)         { errorCb_     = std::move(cb); }
+    void setTrafficCallback(TrafficCallback cb)     { trafficCb_   = std::move(cb); }
 
     /// Connect and start Telnet negotiation.  Blocks until negotiation is
     /// complete or an error occurs (intended to be called from a background thread).
@@ -122,7 +126,12 @@ private:
     State              state_       { State::Disconnected };
     TelnetState        telnetState_ { TelnetState::Normal };
 
-    // Option negotiation tracking
+    DataCallback      dataCb_;
+    ConnectedCallback connectedCb_;
+    ErrorCallback     errorCb_;
+    TrafficCallback   trafficCb_;
+
+    // Option negotiation tracking — what the server has agreed to
     bool willBinary_   { false };
     bool doBinary_     { false };
     bool willEOR_      { false };
@@ -133,14 +142,19 @@ private:
     bool tn3270eOffered_ { false };
     uint16_t sendSeqNum_ { 0 };    // TN3270E outbound sequence number
 
+    // Track options WE have already sent (RFC 854: don't retransmit in-flight opts)
+    bool sentWillBinary_   { false };
+    bool sentDoBinary_     { false };
+    bool sentWillEOR_      { false };
+    bool sentDoEOR_        { false };
+    bool sentWillTermType_ { false };
+    bool sentWillTN3270E_  { false };
+    bool sentDoTN3270E_    { false };
+
     // Accumulate current 3270 record
     std::vector<uint8_t> currentRecord_;
     // Accumulate sub-negotiation payload
     std::vector<uint8_t> subnegBuf_;
-
-    DataCallback        dataCb_;
-    ConnectedCallback   connectedCb_;
-    ErrorCallback       errorCb_;
 };
 
 } // namespace x3270

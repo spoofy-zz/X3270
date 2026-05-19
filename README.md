@@ -133,6 +133,38 @@ BUILD_NUMBER=42 ./package.sh
 
 ---
 
+## Version History
+
+### v1.0.2 — 2026-05-19
+
+**Traffic Monitor panel**
+- New floating **Traffic Monitor** window (Debug → Traffic Monitor, `⌘⇧D`) showing all raw inbound and outbound Telnet/TN3270 bytes as a colour-coded hex dump (TX blue, RX green) with timestamps, byte counts, and a printable ASCII column.
+- **Clear** button wipes the log; **Save to File…** exports the full session as plain text.
+- Captures traffic from the moment a connection is initiated so the full negotiation is always visible.
+
+**TN3270 / z/VM protocol fixes**
+- **Fixed: z/VM stuck at NVT "PRESS BREAK KEY TO BEGIN SESSION"** — The client was proactively sending `WILL BINARY`, `DO BINARY`, `WILL EOR`, `DO EOR` during the opening handshake. z/VM responds with `DONT BINARY` / `DONT EOR`, which per RFC 854 permanently disables those options for the session. z/VM then committed to NVT mode and never offered 3270 negotiation. Fix: remove proactive BINARY/EOR offers from `connect()`; let the server drive binary/EOR negotiation after the terminal-type exchange.
+- **Fixed: Duplicate `WILL TN3270E` confusing TN3270E-capable servers** — When the server confirmed our initial `WILL TN3270E` by echoing `DO TN3270E`, the response handler was sending a second `WILL TN3270E`, causing some servers to reject TN3270E entirely. Fix: added `sentWillTN3270E_` / `sentDoTN3270E_` guards (same pattern as the existing `sentWillBinary_` guards).
+
+**Other fixes**
+- `WILL TN3270E` server offer not handled → fixed
+- `enterDataMode()` guard was too strict (required `willBinary_`/`willEOR_`) → fixed
+- Write command reset buffer address to 0 → fixed
+- `FUNCTIONS REJECT` from server not handled → fixed
+- Keyboard locked permanently after a failed AID send (`SendRecordCallback` now returns `bool`) → fixed
+- Keyboard started unlocked instead of locked-while-connecting → fixed (`LockReason::Connecting` initial state)
+- `DEVICE-TYPE REJECT` did not call `enterDataMode()` → fixed
+- Duplicate `WILL`/`DO` for `BINARY`/`EOR` during re-negotiation → fixed (`sentXxx_` flags)
+- `TERMINAL-TYPE SEND` sub-negotiation did not set `doTermType_` → fixed
+- Query Reply was missing Colour and Highlighting structured fields (required for ISPF menus) → fixed
+
+### v1.0.1 — 2026-05-13
+
+**Initial public release** — basic TN3270E support, TLS support, ISPF Query Reply support, CoreText rendering, keyboard input, and a simple Connect dialog.
+
+
+---
+
 ## License
 
 X3270 for macOS is released under the **MIT License**.  

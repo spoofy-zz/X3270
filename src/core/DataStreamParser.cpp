@@ -169,10 +169,9 @@ void DataStreamParser::handleCommand(uint8_t cmd) {
 
 void DataStreamParser::doWrite(bool eraseFirst, bool /*alternate*/) {
     if (eraseFirst) {
-        screen_.eraseAll();          // also resets bufPtr_ and currentAttr_
-    } else {
-        screen_.setBufferAddress(0); // Write always restarts at buffer address 0
+        screen_.eraseAll();  // resets bufPtr_, cursorPos_, and currentAttr_
     }
+    // Plain Write: buffer address is unchanged; host uses SBA orders to position.
     state_ = ParseState::WCC;
 }
 
@@ -251,34 +250,64 @@ void DataStreamParser::handleWSF(const std::vector<uint8_t>& record) {
 std::vector<uint8_t> DataStreamParser::buildQueryReply() {
     std::vector<uint8_t> r;
 
-    // AID byte: Query Reply
+    // AID byte: Query Reply (0x88)
     r.push_back(0x88);
 
-    // ── Query Reply (Summary) ────────────────────────────────────────────────
-    // Lists all QR types being sent so the host knows what to expect.
-    // Length=6: includes itself (2) + type (1) + two type codes (2) = 5 ... wait
-    // Actually: length counts itself → 2 (len) + 1 (type=0x81) + N type bytes
-    // Here N=1 (just Usable Area = 0x80)
-    r.push_back(0x00); r.push_back(0x05); // length = 5
-    r.push_back(0x81);                    // type: Query Reply (Summary)
-    r.push_back(0x80);                    // list: Usable Area
-    r.push_back(0x81);                    // list: Summary itself (required)
+    // ── Query Reply (Summary) — 0x81 ────────────────────────────────────────
+    // MUST list every QR type present in this response (including itself).
+    // Length = 2 (len field) + 1 (type) + N listed codes.
+    // Types listed: Usable Area=0x80, Summary=0x81, Color=0x86, Highlight=0x87
+    r.push_back(0x00); r.push_back(0x07); // length = 7
+    r.push_back(0x81);                    // type: Summary
+    r.push_back(0x80);                    // Usable Area
+    r.push_back(0x81);                    // Summary itself
+    r.push_back(0x86);                    // Color
+    r.push_back(0x87);                    // Highlighting
 
-    // ── Query Reply (Usable Area) ────────────────────────────────────────────
-    // 2 (len) + 1 (type) + 1 (flags) + 1 (flags2) + 2 (cols) + 2 (rows)
-    // + 1 (unit) + 2 (Xr) + 2 (Yr) + 1 (AW) + 1 (AH) + 2 (bufsz) = 18 bytes
+    // ── Query Reply (Usable Area) — 0x80 ────────────────────────────────────
+    // 2+1+1+1+2+2+1+2+2+1+1+2 = 18 bytes  (per IBM GA23-0059)
     r.push_back(0x00); r.push_back(0x12); // length = 18
     r.push_back(0x80);                    // type: Usable Area
-    r.push_back(0x01);                    // 12-bit buffer addressing
-    r.push_back(0x00);                    // flags
+    r.push_back(0x01);                    // addressing: 12-bit only
+    r.push_back(0x00);                    // flags (reserved)
     r.push_back(0x00); r.push_back(0x50); // usable cols = 80
     r.push_back(0x00); r.push_back(0x18); // usable rows = 24
-    r.push_back(0x01);                    // measurement unit: cells
-    r.push_back(0x00); r.push_back(0x09); // cell X size
-    r.push_back(0x00); r.push_back(0x0C); // cell Y size
-    r.push_back(0x09);                    // AW (character cell X)
-    r.push_back(0x0C);                    // AH (character cell Y)
+    r.push_back(0x01);                    // units: mm
+    r.push_back(0x00); r.push_back(0x60); // Xr = 96 units/mm (standard 3278 value)
+    r.push_back(0x00); r.push_back(0x70); // Yr = 112 units/mm
+    r.push_back(0x09);                    // AW = 9 (cell width in Xr units)
+    r.push_back(0x0C);                    // AH = 12 (cell height in Yr units)
     r.push_back(0x07); r.push_back(0x80); // buffer size = 1920 (24×80)
+
+    // ── Query Reply (Color) — 0x86 ───────────────────────────────────────────
+    // Reports 8 standard 3270 extended colors (GA23-0059 §6.7).
+    // Format: flags(1) + Np(1) + Np×[attr-code(1), device-code(1)]
+    // 2+1+1+1+8×2 = 21 bytes
+    r.push_back(0x00); r.push_back(0x15); // length = 21
+    r.push_back(0x86);                    // type: Color
+    r.push_back(0x00);                    // flags (bit 0: field color supported)
+    r.push_back(0x08);                    // Np = 8 color pairs
+    r.push_back(0x00); r.push_back(0xF4); // default fg → green (0xF4)
+    r.push_back(0xF1); r.push_back(0xF1); // blue      → blue
+    r.push_back(0xF2); r.push_back(0xF2); // red       → red
+    r.push_back(0xF3); r.push_back(0xF3); // pink      → pink
+    r.push_back(0xF4); r.push_back(0xF4); // green     → green
+    r.push_back(0xF5); r.push_back(0xF5); // turquoise → turquoise
+    r.push_back(0xF6); r.push_back(0xF6); // yellow    → yellow
+    r.push_back(0xF7); r.push_back(0xF7); // white     → white
+
+    // ── Query Reply (Highlighting) — 0x87 ───────────────────────────────────
+    // Reports 5 extended highlighting attributes (GA23-0059 §6.8).
+    // Format: Np(1) + Np×[attr-code(1), device-code(1)]
+    // 2+1+1+5×2 = 14 bytes
+    r.push_back(0x00); r.push_back(0x0E); // length = 14
+    r.push_back(0x87);                    // type: Highlighting
+    r.push_back(0x05);                    // Np = 5 highlight pairs
+    r.push_back(0x00); r.push_back(0x00); // default    → normal
+    r.push_back(0xF1); r.push_back(0xF1); // blink      → blink
+    r.push_back(0xF2); r.push_back(0xF2); // reverse    → reverse video
+    r.push_back(0xF4); r.push_back(0xF4); // underscore → underscore
+    r.push_back(0xF8); r.push_back(0xF8); // intensify  → intensify
 
     return r;
 }

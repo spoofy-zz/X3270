@@ -1,5 +1,6 @@
 #import "TerminalWindowController.h"
 #import "TerminalView.h"
+#import "DebugWindowController.h"
 #include "TN3270Session.h"
 #include "DataStreamParser.h"
 #include "KeyboardState.h"
@@ -11,6 +12,7 @@
 
 @implementation TerminalWindowController {
     TerminalView*   _termView;
+    DebugWindowController *_debugWC;
 
     // Core engine objects (heap-allocated because they have no default ctor)
     std::unique_ptr<x3270::ScreenBuffer>   _screen;
@@ -94,10 +96,11 @@
         if (s) s->_session->send3270Record(data);
     });
 
-    // Keyboard → send AID records to session
-    _kbd->setSendCallback([weakSelf](const std::vector<uint8_t>& record) {
+    // Keyboard → send AID records to session (returns false if not yet connected)
+    _kbd->setSendCallback([weakSelf](const std::vector<uint8_t>& record) -> bool {
         __strong typeof(weakSelf) s = weakSelf;
-        if (s) s->_session->send3270Record(record);
+        if (s) return s->_session->send3270Record(record);
+        return false;
     });
 
     // Session → data received
@@ -147,6 +150,17 @@
             }
         });
     });
+
+    // Session → raw traffic (called from any thread)
+    _debugWC = [[DebugWindowController alloc] init];
+    _session->setTrafficCallback([weakSelf](bool tx, const std::vector<uint8_t>& data) {
+        __strong typeof(weakSelf) s = weakSelf;
+        if (s) {
+            [s->_debugWC appendBytes:data.data()
+                              length:data.size()
+                          isOutgoing:tx ? YES : NO];
+        }
+    });
 }
 
 // ── UI ────────────────────────────────────────────────────────────────────────
@@ -186,6 +200,12 @@
 
 - (void)windowWillClose:(NSNotification*)notification {
     if (_session) _session->disconnect();
+}
+
+/// Open the traffic monitor panel (⌘⇧D).
+- (IBAction)openDebugWindow:(id)sender {
+    [_debugWC showWindow:nil];
+    [_debugWC.window makeKeyAndOrderFront:nil];
 }
 
 @end

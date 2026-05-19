@@ -30,12 +30,13 @@ inline uint8_t pfAID(int n) {
 class KeyboardState {
 public:
     enum class LockReason {
-        None,       // Keyboard unlocked
-        System,     // Locked after AID key — waiting for host unlock
-        OErr,       // Operator error (typing in protected/numeric/full field)
+        None,        // Keyboard unlocked
+        Connecting,  // Session not yet established — waiting for TN3270 negotiation
+        System,      // Locked after AID key — waiting for host unlock
+        OErr,        // Operator error (typing in protected/numeric/full field)
     };
 
-    using SendRecordCallback = std::function<void(const std::vector<uint8_t>&)>;
+    using SendRecordCallback = std::function<bool(const std::vector<uint8_t>&)>;
 
     KeyboardState(ScreenBuffer& screen, EbcdicCodec& codec);
 
@@ -83,7 +84,7 @@ private:
 
     ScreenBuffer&       screen_;
     EbcdicCodec&        codec_;
-    LockReason          lockReason_  { LockReason::None };
+    LockReason          lockReason_  { LockReason::Connecting };
     bool                insertMode_  { false };
     SendRecordCallback  sendCb_;
 };
