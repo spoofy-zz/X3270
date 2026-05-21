@@ -12,7 +12,7 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 APP_NAME="X3270"
-VERSION="1.0.2"
+VERSION="1.0.3"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 DMG_NAME="${APP_NAME}-${VERSION}-build${BUILD_NUMBER}"
 BUILD_DIR="$(pwd)/build_release"

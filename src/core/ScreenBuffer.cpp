@@ -119,11 +119,16 @@ void ScreenBuffer::resetAllMDT() {
 }
 
 // ── Read Modified ─────────────────────────────────────────────────────────────
-std::vector<ScreenBuffer::ModifiedField> ScreenBuffer::getModifiedFields() const {
+std::vector<ScreenBuffer::ModifiedField> ScreenBuffer::getModifiedFields(bool includeProtected) const {
     std::vector<ModifiedField> result;
     for (int i = 0; i < SIZE; ++i) {
         if (!cells_[i].isFA) continue;
         if (!(cells_[i].attr & FA_MDT)) continue;
+        // IBM GA23-0059: Read Modified returns only unprotected (input) fields.
+        // Protected fields with MDT set are host-placed data, not user input;
+        // sending them causes ISPF screen input error code 23.
+        // Read Modified All (includeProtected=true) returns every MDT field.
+        if (!includeProtected && (cells_[i].attr & FA_PROTECTED)) continue;
         // Collect data from this FA+1 to next FA
         ModifiedField mf;
         mf.startPos = i;
@@ -140,7 +145,7 @@ std::vector<ScreenBuffer::ModifiedField> ScreenBuffer::getModifiedFields() const
     return result;
 }
 
-std::vector<uint8_t> ScreenBuffer::buildReadModifiedRecord(int aidByte) const {
+std::vector<uint8_t> ScreenBuffer::buildReadModifiedRecord(int aidByte, bool includeProtected) const {
     std::vector<uint8_t> rec;
     // AID byte
     rec.push_back(static_cast<uint8_t>(aidByte));
@@ -151,7 +156,7 @@ std::vector<uint8_t> ScreenBuffer::buildReadModifiedRecord(int aidByte) const {
     rec.push_back(cursorAddr[1]);
 
     // Each modified field: SBA(addr) + data
-    auto fields = getModifiedFields();
+    auto fields = getModifiedFields(includeProtected);
     // SBA order code
     static constexpr uint8_t SBA_ORDER = 0x11;
     for (const auto& mf : fields) {

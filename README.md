@@ -135,6 +135,15 @@ BUILD_NUMBER=42 ./package.sh
 
 ## Version History
 
+### v1.0.3 — 2026-05-21
+
+**ISPF / 3270 data stream fixes**
+- **Fixed: ISPF screen input error code 23 on protected fields** — `Read Modified` responses were including protected fields that had MDT=1 (host-written output fields). Per IBM GA23-0059, `Read Modified` must return *only* unprotected (input) fields; sending protected field data back caused ISPF to reject the input with error code 23. Fix: `getModifiedFields()` now skips any FA cell with the Protected bit set.
+- **Fixed: `Read Modified All` now correctly returns all MDT fields** — `CMD_READ_MODIFIED_ALL` (0x0E/0x6E) was handled identically to `CMD_READ_MODIFIED`, so the protected-field filter was incorrectly applied to host-solicited "all fields" polls as well. Per spec, `Read Modified All` must include both protected and unprotected modified fields. The two commands are now handled separately; `buildReadModifiedRecord` accepts an `includeProtected` flag.
+
+**Keyboard / function key fixes**
+- **Added `performKeyEquivalent:` override in `TerminalView`** — macOS routes some function-key events through the key-equivalent path (menu shortcut resolution) rather than `keyDown:`, silently dropping them. The override mirrors the full PF1–PF24 / Shift+F1–F12 mapping so those events are consumed by the terminal regardless of which path the OS uses.
+
 ### v1.0.2 — 2026-05-19
 
 **Traffic Monitor panel**

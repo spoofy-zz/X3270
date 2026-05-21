@@ -82,10 +82,13 @@ public:
         uint8_t          attrByte;
         std::vector<uint8_t> data; // EBCDIC bytes (NUL stripped)
     };
-    std::vector<ModifiedField> getModifiedFields() const;
+    /// includeProtected=false for Read Modified (user AID keys / solicited poll),
+    /// includeProtected=true  for Read Modified All (host solicited — returns every MDT field).
+    std::vector<ModifiedField> getModifiedFields(bool includeProtected = false) const;
 
-    /// Build Read Modified data: SBA(cursor) + {SBA(field)+data} for each MDT field
-    std::vector<uint8_t> buildReadModifiedRecord(int aidByte) const;
+    /// Build Read Modified data: SBA(cursor) + {SBA(field)+data} for each MDT field.
+    /// Pass includeProtected=true only for Read Modified All.
+    std::vector<uint8_t> buildReadModifiedRecord(int aidByte, bool includeProtected = false) const;
 
     /// Clear MDT bit on all unprotected fields
     void resetAllMDT();

@@ -196,7 +196,7 @@ static const int kOIARows = 2;
     static dispatch_once_t vOnce;
     dispatch_once(&vOnce, ^{
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.0.2";
+        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.0.3";
         NSString *b = info[@"CFBundleVersion"] ?: @"1";
         versionStr = [NSString stringWithFormat:@"X3270 v%@ build %@  \u2014  \u00a9 2026 Swen Skalski", v, b];
     });
@@ -212,6 +212,32 @@ static const int kOIARows = 2;
 
 // ── Key handling ──────────────────────────────────────────────────────────────
 - (BOOL)acceptsFirstResponder { return YES; }
+
+// macOS sometimes routes function-key events through performKeyEquivalent:
+// instead of keyDown: (e.g. when the key overlaps with a menu key-equivalent
+// lookup, or on certain keyboard layouts).  Mirror the PF-key logic here so
+// those events are not silently dropped.
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+    if (!_kbd) return NO;
+
+    NSUInteger modifiers = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+    // Let Cmd+Fkey pass through so app-level shortcuts (⌘Q, ⌘N …) still work.
+    if (modifiers & NSEventModifierFlagCommand) return [super performKeyEquivalent:event];
+
+    unichar key = [event.charactersIgnoringModifiers length] > 0
+                  ? [event.charactersIgnoringModifiers characterAtIndex:0] : 0;
+    BOOL shiftDown = (modifiers & NSEventModifierFlagShift) != 0;
+
+    if (key >= NSF1FunctionKey && key <= NSF12FunctionKey) {
+        int pfNum = (int)(key - NSF1FunctionKey + 1);
+        if (shiftDown) pfNum += 12;   // Shift+F1-F12 → PF13-24
+        BOOL handled = _kbd->handlePF(pfNum);
+        if (handled) [self setNeedsDisplay:YES];
+        else if (_kbd->lockReason() == x3270::KeyboardState::LockReason::OErr) NSBeep();
+        return YES;  // consume the event regardless so macOS takes no further action
+    }
+    return [super performKeyEquivalent:event];
+}
 
 - (void)keyDown:(NSEvent *)event {
     if (!_kbd) { [super keyDown:event]; return; }

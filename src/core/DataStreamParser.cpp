@@ -145,12 +145,18 @@ void DataStreamParser::handleCommand(uint8_t cmd) {
         break;
     case CMD_READ_MODIFIED:
     case CMD_READ_MODIFIED_SNA:
-    case CMD_READ_MODIFIED_ALL:
-    case CMD_READ_MODIFIED_ALL_SNA:
-        // Host requested data — respond (normally triggered by AID, but host
-        // can also poll). We send an empty Read Modified response.
+        // Host-solicited Read Modified: unprotected MDT fields only.
         if (sendCb_) {
             auto data = screen_.buildReadModifiedRecord(0x60 /*no-AID*/);
+            sendCb_(data);
+        }
+        state_ = ParseState::Command;
+        break;
+    case CMD_READ_MODIFIED_ALL:
+    case CMD_READ_MODIFIED_ALL_SNA:
+        // Host-solicited Read Modified All: ALL MDT fields including protected.
+        if (sendCb_) {
+            auto data = screen_.buildReadModifiedRecord(0x60 /*no-AID*/, true);
             sendCb_(data);
         }
         state_ = ParseState::Command;
