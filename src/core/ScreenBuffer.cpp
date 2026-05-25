@@ -16,7 +16,12 @@ const uint8_t ScreenBuffer::kCodeTable[64] = {
     0xF8,0xF9,0x7A,0x7B,0x7C,0x7D,0x7E,0x7F
 };
 
-ScreenBuffer::ScreenBuffer() {
+ScreenBuffer::ScreenBuffer(TerminalModel model)
+    : model_(model)
+    , rows_(rowsForModel(model))
+    , cols_(colsForModel(model))
+    , cells_(rows_ * cols_)
+{
     eraseAll();
 }
 
@@ -40,13 +45,14 @@ void ScreenBuffer::eraseAll() {
 }
 
 void ScreenBuffer::eraseAllUnprotected() {
-    for (int i = 0; i < SIZE; ++i) {
+    const int sz = rows_ * cols_;
+    for (int i = 0; i < sz; ++i) {
         if (!cells_[i].isFA && !cells_[i].isProtected()) {
             cells_[i].ch = 0x00;
         }
     }
     // Clear MDT on all unprotected field attrs
-    for (int i = 0; i < SIZE; ++i) {
+    for (int i = 0; i < sz; ++i) {
         if (cells_[i].isFA && !cells_[i].isProtected()) {
             cells_[i].attr &= ~FA_MDT;
         }
@@ -116,8 +122,9 @@ void ScreenBuffer::eraseUnprotectedToAddress(int destOffset) {
 // For non-FA cells, we need to look up the nearest preceding FA.
 // We also propagate attrs to all cells during this scan.
 int ScreenBuffer::findFieldStart(int bufPos) const {
-    for (int i = 1; i <= SIZE; ++i) {
-        int pos = (bufPos - i + SIZE) % SIZE;
+    const int sz = rows_ * cols_;
+    for (int i = 1; i <= sz; ++i) {
+        int pos = (bufPos - i + sz) % sz;
         if (cells_[pos].isFA) return pos;
     }
     return -1; // no FA found (entire screen is unformatted)
@@ -132,7 +139,8 @@ void ScreenBuffer::setMDT(int bufferPos) {
 }
 
 void ScreenBuffer::resetAllMDT() {
-    for (int i = 0; i < SIZE; ++i) {
+    const int sz = rows_ * cols_;
+    for (int i = 0; i < sz; ++i) {
         if (cells_[i].isFA) {
             cells_[i].attr &= ~FA_MDT;
         }
@@ -143,7 +151,8 @@ void ScreenBuffer::resetAllMDT() {
 // ── Read Modified ─────────────────────────────────────────────────────────────
 std::vector<ScreenBuffer::ModifiedField> ScreenBuffer::getModifiedFields(bool includeProtected) const {
     std::vector<ModifiedField> result;
-    for (int i = 0; i < SIZE; ++i) {
+    const int sz = rows_ * cols_;
+    for (int i = 0; i < sz; ++i) {
         if (!cells_[i].isFA) continue;
         if (!(cells_[i].attr & FA_MDT)) continue;
         // IBM GA23-0059: Read Modified returns only unprotected (input) fields.
@@ -195,13 +204,24 @@ std::vector<uint8_t> ScreenBuffer::buildReadModifiedRecord(int aidByte, bool inc
 
 // ── Address encoding/decoding ─────────────────────────────────────────────────
 int ScreenBuffer::decodeAddress(uint8_t b0, uint8_t b1) {
-    // Strip top 2 bits and reassemble 12-bit offset
+    // 14-bit binary encoding: top 2 bits of b0 are 00 (range 0x00–0x3F)
+    if ((b0 & 0xC0) == 0x00) {
+        return (static_cast<int>(b0 & 0x3F) << 8) | b1;
+    }
+    // 12-bit code-table encoding: strip top 2 bits and reassemble
     return ((b0 & 0x3F) << 6) | (b1 & 0x3F);
 }
 
 void ScreenBuffer::encodeAddress(int offset, uint8_t out[2]) {
-    out[0] = kCodeTable[(offset >> 6) & 0x3F];
-    out[1] = kCodeTable[offset & 0x3F];
+    if (offset > 4095) {
+        // 14-bit binary encoding (top 2 bits = 00) for large screens
+        out[0] = static_cast<uint8_t>((offset >> 8) & 0x3F);
+        out[1] = static_cast<uint8_t>(offset & 0xFF);
+    } else {
+        // 12-bit code-table encoding
+        out[0] = kCodeTable[(offset >> 6) & 0x3F];
+        out[1] = kCodeTable[offset & 0x3F];
+    }
 }
 
 } // namespace x3270

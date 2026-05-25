@@ -33,9 +33,6 @@ static void register3270FontsIfNeeded(void) {
     });
 }
 
-static const int kRows = x3270::ScreenBuffer::ROWS;
-static const int kCols = x3270::ScreenBuffer::COLS;
-// OIA (Operator Information Area) extra rows below the 3270 screen
 static const int kOIARows = 2;
 
 // ── IBM 3279 extended colour palette ─────────────────────────────────────────
@@ -62,6 +59,8 @@ static NSColor *colorFor3270Code(uint8_t code) {
     NSTimer* _cursorTimer;
     BOOL     _cursorVisible;
 
+    int      _rows;    // character grid rows (mirrors _screen->rows())
+    int      _cols;    // character grid cols (mirrors _screen->cols())
     CGFloat  _charW;   // character cell width
     CGFloat  _charH;   // character cell height (ascent + descent + leading)
     CGFloat  _baseline; // distance from cell bottom to text baseline
@@ -71,6 +70,8 @@ static NSColor *colorFor3270Code(uint8_t code) {
     if ((self = [super initWithFrame:frame])) {
         _codec = x3270::EbcdicCodec(x3270::CodePage::CP037);
         _cursorVisible = YES;
+        _rows = 24;  // default; updated when screen buffer is attached
+        _cols = 80;
 
         // Register the bundled 3270 font variants with Core Text (once per process)
         register3270FontsIfNeeded();
@@ -149,13 +150,17 @@ static NSColor *colorFor3270Code(uint8_t code) {
 }
 
 - (NSSize)preferredSize {
-    return NSMakeSize(_charW * kCols, _charH * (kRows + kOIARows));
+    return NSMakeSize(_charW * _cols, _charH * (_rows + kOIARows));
 }
 
 - (void)setScreenBuffer:(x3270::ScreenBuffer*)screen
           keyboardState:(x3270::KeyboardState*)kbd {
     _screen = screen;
     _kbd    = kbd;
+    if (screen) {
+        _rows = screen->rows();
+        _cols = screen->cols();
+    }
 }
 
 - (void)screenDidUpdate {
@@ -179,9 +184,9 @@ static NSColor *colorFor3270Code(uint8_t code) {
     }
 
     // Draw each cell
-    for (int row = 0; row < kRows; ++row) {
-        for (int col = 0; col < kCols; ++col) {
-            int pos = row * kCols + col;
+    for (int row = 0; row < _rows; ++row) {
+        for (int col = 0; col < _cols; ++col) {
+            int pos = row * _cols + col;
             const x3270::Cell& cell = _screen->at(pos);
 
             // Attribute positions are rendered as blanks (background colour only)
@@ -254,8 +259,8 @@ static NSColor *colorFor3270Code(uint8_t code) {
     // Draw block cursor (always visible during blink-on phase, regardless of lock state)
     if (_cursorVisible && _screen) {
         int curPos = _screen->cursorPos();
-        int curRow = curPos / kCols;
-        int curCol = curPos % kCols;
+        int curRow = curPos / _cols;
+        int curCol = curPos % _cols;
         const x3270::Cell& curCell = _screen->at(curPos);
         CGFloat cx = curCol * _charW;
         CGFloat cy = self.bounds.size.height - (curRow + 1) * _charH;
@@ -282,7 +287,7 @@ static NSColor *colorFor3270Code(uint8_t code) {
 }
 
 - (void)drawOIA {
-    CGFloat oiaY = self.bounds.size.height - (kRows + 1) * _charH;
+    CGFloat oiaY = self.bounds.size.height - (_rows + 1) * _charH;
     // Separator line
     [[NSColor colorWithWhite:0.4 alpha:1.0] setFill];
     NSRectFill(NSMakeRect(0, oiaY + _charH - 1, self.bounds.size.width, 1.0));
@@ -319,7 +324,7 @@ static NSColor *colorFor3270Code(uint8_t code) {
     if (_screen) {
         int pos = _screen->cursorPos();
         cursorInfo = [NSString stringWithFormat:@"%03d/%03d",
-                      pos / kCols + 1, pos % kCols + 1];
+                      pos / _cols + 1, pos % _cols + 1];
     }
 
     CGFloat oiaTextY = oiaY + _baseline;
@@ -331,7 +336,7 @@ static NSColor *colorFor3270Code(uint8_t code) {
     static dispatch_once_t vOnce;
     dispatch_once(&vOnce, ^{
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.2.0";
+        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.3.0";
         NSString *b = info[@"CFBundleVersion"] ?: @"1";
         versionStr = [NSString stringWithFormat:@"X3270 v%@ build %@  \u2014  \u00a9 2026 Swen Skalski", v, b];
     });

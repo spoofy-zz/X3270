@@ -1,5 +1,6 @@
 #import "ConnectionWindowController.h"
 #import "TerminalWindowController.h"
+#include "TerminalModel.h"
 
 @implementation ConnectionWindowController {
     NSComboBox     *_hostCombo;
@@ -7,6 +8,7 @@
     NSButton       *_sslCheckbox;
     NSTextField    *_caField;
     NSPopUpButton  *_codePagePopup;
+    NSPopUpButton  *_modelPopup;
     NSButton       *_connectButton;
     NSTextField    *_statusLabel;
 
@@ -16,7 +18,7 @@
 
 - (instancetype)init {
     NSWindow *win = [[NSWindow alloc]
-                     initWithContentRect:NSMakeRect(0, 0, 420, 350)
+                     initWithContentRect:NSMakeRect(0, 0, 420, 384)
                                styleMask:NSWindowStyleMaskTitled
                                         |NSWindowStyleMaskClosable
                                         |NSWindowStyleMaskMiniaturizable
@@ -39,15 +41,15 @@
     CGFloat margin = 20;
     CGFloat hdrW = 380;
     CGFloat labelW = 100, fieldW = 240, rowH = 24, gap = 10;
-    __block CGFloat curY = 220;
+    __block CGFloat curY = 254;
 
     // ── Header: app name, version and author ──────────────────────────────────
-    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.2.0";
+    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.3.0";
 
     NSTextField *appName = [NSTextField labelWithString:@"X3270"];
     appName.font = [NSFont boldSystemFontOfSize:16];
     appName.alignment = NSTextAlignmentCenter;
-    appName.frame = NSMakeRect(margin, 314, hdrW, 24);
+    appName.frame = NSMakeRect(margin, 348, hdrW, 24);
     [cv addSubview:appName];
 
     NSTextField *appSubtitle = [NSTextField labelWithString:
@@ -55,7 +57,7 @@
     appSubtitle.font = [NSFont systemFontOfSize:11];
     appSubtitle.textColor = [NSColor secondaryLabelColor];
     appSubtitle.alignment = NSTextAlignmentCenter;
-    appSubtitle.frame = NSMakeRect(margin, 294, hdrW, 16);
+    appSubtitle.frame = NSMakeRect(margin, 328, hdrW, 16);
     [cv addSubview:appSubtitle];
 
     NSMutableAttributedString *linkTitle = [[NSMutableAttributedString alloc]
@@ -64,7 +66,7 @@
                 NSFontAttributeName: [NSFont systemFontOfSize:11],
                 NSForegroundColorAttributeName: [NSColor linkColor],
             }];
-    NSButton *linkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin, 272, hdrW, 18)];
+    NSButton *linkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin, 306, hdrW, 18)];
     [linkBtn setAttributedTitle:linkTitle];
     linkBtn.buttonType = NSButtonTypeMomentaryLight;
     linkBtn.bordered = NO;
@@ -73,7 +75,7 @@
     linkBtn.alignment = NSTextAlignmentCenter;
     [cv addSubview:linkBtn];
 
-    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 258, hdrW, 1)];
+    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 292, hdrW, 1)];
     separator.boxType = NSBoxSeparator;
     [cv addSubview:separator];
 
@@ -120,6 +122,17 @@
     _codePagePopup = [[NSPopUpButton alloc] init];
     [_codePagePopup addItemsWithTitles:@[@"CP037 (US/Canada)", @"CP500 (International)", @"CP1047 (Open Systems)"]];
     addRow(@"Code Page:", _codePagePopup);
+
+    // Screen model
+    _modelPopup = [[NSPopUpButton alloc] init];
+    [_modelPopup addItemsWithTitles:@[
+        @"Model 2 \u2014 24\u00d780 (default)",
+        @"Model 3 \u2014 32\u00d780",
+        @"Model 4 \u2014 43\u00d780",
+        @"Model 5 \u2014 27\u00d7132 (wide)",
+        @"Large \u2014 62\u00d7160 (non-standard)",
+    ]];
+    addRow(@"Screen Model:", _modelPopup);
 
     // Status label
     _statusLabel = [NSTextField labelWithString:@""];
@@ -179,6 +192,16 @@
     default: cp = x3270::CodePage::CP037;  break;
     }
 
+    // Map screen model selection
+    x3270::TerminalModel model;
+    switch (_modelPopup.indexOfSelectedItem) {
+    case 1:  model = x3270::TerminalModel::Model3;      break;
+    case 2:  model = x3270::TerminalModel::Model4;      break;
+    case 3:  model = x3270::TerminalModel::Model5;      break;
+    case 4:  model = x3270::TerminalModel::LargeCustom; break;
+    default: model = x3270::TerminalModel::Model2;      break;
+    }
+
     _connectButton.enabled = NO;
     _statusLabel.stringValue = @"Connecting…";
     [self saveConnectionToHistory];
@@ -188,7 +211,8 @@
                                                   port:(uint16_t)port
                                                 useSSL:useSSL
                                               caBundle:caBundle
-                                             codePage:cp];
+                                             codePage:cp
+                                                model:model];
     [_terminals addObject:twc];
     [twc showWindow:nil];
 
@@ -254,6 +278,9 @@ static const NSInteger  kHistoryMax = 20;
         NSInteger cp = [last[@"codepage"] integerValue];
         if (cp >= 0 && cp < _codePagePopup.numberOfItems)
             [_codePagePopup selectItemAtIndex:cp];
+        NSInteger model = [last[@"model"] integerValue];
+        if (model >= 0 && model < _modelPopup.numberOfItems)
+            [_modelPopup selectItemAtIndex:model];
     }
 }
 
@@ -270,6 +297,7 @@ static const NSInteger  kHistoryMax = 20;
         @"ssl":      @(ssl),
         @"ca":       _caField.stringValue ?: @"",
         @"codepage": @(_codePagePopup.indexOfSelectedItem),
+        @"model":    @(_modelPopup.indexOfSelectedItem),
     };
 
     // Remove existing entry for same host:port so it moves to top
@@ -302,6 +330,9 @@ static const NSInteger  kHistoryMax = 20;
     NSInteger cp = [entry[@"codepage"] integerValue];
     if (cp >= 0 && cp < _codePagePopup.numberOfItems)
         [_codePagePopup selectItemAtIndex:cp];
+    NSInteger model = [entry[@"model"] integerValue];
+    if (model >= 0 && model < _modelPopup.numberOfItems)
+        [_modelPopup selectItemAtIndex:model];
 }
 
 @end

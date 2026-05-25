@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(X3270 VERSION 1.2.0 LANGUAGES CXX OBJCXX)
+project(X3270 VERSION 1.3.0 LANGUAGES CXX OBJCXX)
 
 # ── Version / Build number ────────────────────────────────────────────────────
 # Override on the command line: cmake -DBUILD_NUMBER=42 ..

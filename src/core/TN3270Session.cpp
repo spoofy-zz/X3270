@@ -216,7 +216,7 @@ void TN3270Session::processIacCommand(uint8_t cmd, uint8_t opt) {
                 OPT_TN3270E,
                 TN3270E_DEVICE_TYPE, TN3270E_REQUEST
             };
-            const char* dtype = "IBM-3278-2-E";
+            const char* dtype = modelTypeName(model_);
             for (const char* p = dtype; *p; ++p)
                 payload.push_back(static_cast<uint8_t>(*p));
             sendSb(payload);
@@ -306,8 +306,7 @@ void TN3270Session::handleTN3270eSb(const std::vector<uint8_t>& sb) {
 }
 
 void TN3270Session::sendTerminalType() {
-    // IBM-3278-2-E for extended data stream
-    const char* term = "IBM-3278-2-E";
+    const char* term = modelTypeName(model_);
     std::vector<uint8_t> payload = { OPT_TERMINAL_TYPE, 0x00 /* IS */ };
     for (const char* p = term; *p; ++p)
         payload.push_back(static_cast<uint8_t>(*p));

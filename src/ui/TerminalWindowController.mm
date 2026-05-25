@@ -27,14 +27,16 @@
     uint16_t   _port;
     BOOL       _useSSL;
     NSString  *_caBundle;
-    x3270::CodePage _codePage;
+    x3270::CodePage     _codePage;
+    x3270::TerminalModel _model;
 }
 
 - (instancetype)initWithHost:(NSString*)host
                         port:(uint16_t)port
                       useSSL:(BOOL)useSSL
                     caBundle:(NSString*)caBundle
-                   codePage:(x3270::CodePage)codePage {
+                   codePage:(x3270::CodePage)codePage
+                       model:(x3270::TerminalModel)model {
     NSWindow *win = [[NSWindow alloc]
                      initWithContentRect:NSMakeRect(0, 0, 640, 420)
                                styleMask:NSWindowStyleMaskTitled
@@ -53,6 +55,7 @@
         _useSSL   = useSSL;
         _caBundle = [caBundle copy];
         _codePage = codePage;
+        _model    = model;
 
         [self buildEngineObjects];
         [self buildUI];
@@ -69,11 +72,12 @@
 
 // ── Engine ────────────────────────────────────────────────────────────────────
 - (void)buildEngineObjects {
-    _screen  = std::make_unique<x3270::ScreenBuffer>();
+    _screen  = std::make_unique<x3270::ScreenBuffer>(_model);
     _codec   = std::make_unique<x3270::EbcdicCodec>(_codePage);
     _parser  = std::make_unique<x3270::DataStreamParser>(*_screen, *_codec);
     _kbd     = std::make_unique<x3270::KeyboardState>(*_screen, *_codec);
     _session = std::make_unique<x3270::TN3270Session>();
+    _session->setModel(_model);
 
     __weak TerminalWindowController *weakSelf = self;
 

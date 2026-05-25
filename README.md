@@ -50,7 +50,7 @@ The setting is saved and restored on every launch.
 |---|---|
 | **Protocol** | TN3270E (RFC 2355) with automatic fallback to classic TN3270 |
 | **Security** | Plain Telnet **and** implicit TLS (TLS 1.2+) on any port |
-| **Screen models** | IBM 3278 Model 2 (24 × 80) |
+| **Screen models** | Model 2 (24 × 80) · Model 3 (32 × 80) · Model 4 (43 × 80) · Model 5 (27 × 132) · Large custom (62 × 160) — selectable per connection |
 | **EBCDIC code pages** | CP037 (US), CP500 (International), CP1047 (Open Systems) |
 | **UI** | Native Cocoa window, green-on-black phosphor, 600 ms cursor blink |
 | **Keyboard** | PF1–PF24, PA1–PA3, Clear, Reset, Tab/BackTab, ErEOF, Insert, arrows |
@@ -152,6 +152,16 @@ BUILD_NUMBER=42 ./package.sh
 ---
 
 ## Version History
+
+### v1.3.0 — 2026-05-25
+
+**Multi-model screen support**
+- **Five screen models selectable per connection** — Model 2 (24 × 80, default), Model 3 (32 × 80), Model 4 (43 × 80), Model 5 (27 × 132), and a non-standard Large model (62 × 160). The choice is presented as a **Screen Model** drop-down in the Connect dialog and is saved/restored per host in connection history.
+- **TN3270E DEVICE-TYPE negotiation** — The negotiated terminal type string (`IBM-3278-2-E` through `IBM-3278-5-E`) now matches the selected model, so hosts that honor DEVICE-TYPE will configure the session to the correct size automatically.
+- **Dynamic Usable Area Query Reply** — The structured-field Query Reply (0x80) now reports the actual grid dimensions and character cell sizes derived from the selected model, replacing the previous hard-coded 24 × 80 values. Hosts such as ISPF use this to determine wrapping and field layout.
+- **14-bit buffer addressing** — The 62 × 160 Large model requires 9 920 cells, exceeding the 12-bit address limit (4 095). `encodeAddress` / `decodeAddress` now transparently use 14-bit binary addressing for positions above 4 095, and the Query Reply advertises 14-bit capability accordingly (`addrMode = 0x00`).
+- **Dynamic screen buffer** — `ScreenBuffer` internal storage is now a `std::vector<Cell>` sized to the selected model; the compile-time `SIZE / ROWS / COLS` constants have been removed in favour of instance methods `size()`, `rows()`, `cols()`.
+- **Adaptive terminal window** — `TerminalView` derives its cell grid and preferred window size from the attached `ScreenBuffer`, so the window grows or shrinks to fit the chosen model on every connection.
 
 ### v1.2.0 — 2026-05-23
 

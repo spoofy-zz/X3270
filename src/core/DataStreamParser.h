@@ -94,8 +94,8 @@ private:
     /// Parse a Write Structured Field record and respond to Read Partition Query.
     void handleWSF(const std::vector<uint8_t>& record);
 
-    /// Build a minimal IBM-3278-2 Query Reply record (AID=0x88 + SFs).
-    static std::vector<uint8_t> buildQueryReply();
+    /// Build a Query Reply record (AID=0x88 + SFs) reflecting this screen's dimensions.
+    std::vector<uint8_t> buildQueryReply() const;
 
     ScreenBuffer& screen_;
     EbcdicCodec&  codec_;

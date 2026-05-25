@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <functional>
+#include "TerminalModel.h"
 
 namespace x3270 {
 
@@ -40,16 +41,18 @@ struct Cell {
 // ── ScreenBuffer ──────────────────────────────────────────────────────────────
 class ScreenBuffer {
 public:
-    static constexpr int ROWS = 24;
-    static constexpr int COLS = 80;
-    static constexpr int SIZE = ROWS * COLS; // 1920
+    explicit ScreenBuffer(TerminalModel model = TerminalModel::Model2);
 
-    ScreenBuffer();
+    // Runtime grid dimensions
+    int rows()  const { return rows_; }
+    int cols()  const { return cols_; }
+    int size()  const { return rows_ * cols_; }
+    TerminalModel model() const { return model_; }
 
     // ── Buffer access ─────────────────────────────────────────────────────────
     Cell&       at(int offset)       { return cells_[offset]; }
     const Cell& at(int offset) const { return cells_[offset]; }
-    Cell&       at(int row, int col) { return cells_[row * COLS + col]; }
+    Cell&       at(int row, int col) { return cells_[row * cols_ + col]; }
 
     int   cursorPos()  const { return cursorPos_; }
     void  setCursor(int pos) { cursorPos_ = clamp(pos); }
@@ -120,15 +123,19 @@ public:
     void markDirty()      { dirty_ = true; }
 
 private:
-    static int clamp(int pos) {
-        if (pos < 0) pos = (pos % SIZE + SIZE) % SIZE;
-        return pos % SIZE;
+    int clamp(int pos) const {
+        int sz = rows_ * cols_;
+        if (pos < 0) pos = (pos % sz + sz) % sz;
+        return pos % sz;
     }
 
     /// Find the field attribute cell that governs bufPos
     int findFieldStart(int bufPos) const;
 
-    Cell    cells_[SIZE] {};
+    TerminalModel model_;
+    int     rows_;
+    int     cols_;
+    std::vector<Cell> cells_;
     int     cursorPos_        { 0 };
     int     bufPtr_           { 0 };
     bool    dirty_            { false };
@@ -137,7 +144,7 @@ private:
     uint8_t currentBgColor_   { 0x00 };  // active extended bg colour
     uint8_t currentHighlight_ { 0x00 };  // active highlight (reverse/underscore/blink)
 
-    // Buffer address decode table (64 entries, 6-bit index → 8-bit wire byte)
+    // Buffer address code table (64 entries, 6-bit index → 8-bit wire byte)
     static const uint8_t kCodeTable[64];
 };
 

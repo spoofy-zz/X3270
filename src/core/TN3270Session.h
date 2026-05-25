@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include "TLSTransport.h"
+#include "TerminalModel.h"
 
 namespace x3270 {
 
@@ -76,6 +77,10 @@ public:
     void setErrorCallback(ErrorCallback cb)         { errorCb_     = std::move(cb); }
     void setTrafficCallback(TrafficCallback cb)     { trafficCb_   = std::move(cb); }
 
+    /// Set the terminal model before calling connect().
+    /// Determines the DEVICE-TYPE string sent during TN3270E negotiation.
+    void setModel(TerminalModel m) { model_ = m; }
+
     /// Connect and start Telnet negotiation.  Blocks until negotiation is
     /// complete or an error occurs (intended to be called from a background thread).
     bool connect(const std::string& host, uint16_t port,
@@ -125,6 +130,7 @@ private:
     TLSTransport       transport_;
     State              state_       { State::Disconnected };
     TelnetState        telnetState_ { TelnetState::Normal };
+    TerminalModel      model_       { TerminalModel::Model2 };
 
     DataCallback      dataCb_;
     ConnectedCallback connectedCb_;

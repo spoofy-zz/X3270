@@ -18,7 +18,7 @@ extern NSString * const kPref3270FontEnabled;
 /// Call this (on main thread) whenever the screen buffer has changed.
 - (void)screenDidUpdate;
 
-/// Preferred window content size for a 24x80 + OIA terminal
+/// Preferred window content size for the attached screen buffer's model + OIA
 - (NSSize)preferredSize;
 
 /// Colour scheme

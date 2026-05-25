@@ -217,11 +217,12 @@ void DataStreamParser::handleDataByte(uint8_t b) {
         // Program Tab: advance bufPtr to next unprotected field
         // Phase 1 simplified: advance one cell at a time until FA that is not protected
         {
+            const int sz = screen_.size();
             int pos = screen_.bufferPointer();
-            for (int i = 0; i < ScreenBuffer::SIZE; ++i) {
-                pos = (pos + 1) % ScreenBuffer::SIZE;
+            for (int i = 0; i < sz; ++i) {
+                pos = (pos + 1) % sz;
                 if (screen_.at(pos).isFA && !screen_.at(pos).isProtected()) {
-                    screen_.setBufferAddress((pos + 1) % ScreenBuffer::SIZE);
+                    screen_.setBufferAddress((pos + 1) % sz);
                     break;
                 }
             }
@@ -265,11 +266,16 @@ void DataStreamParser::handleWSF(const std::vector<uint8_t>& record) {
 }
 
 // ── Query Reply builder ───────────────────────────────────────────────────────
-// Returns a minimal IBM-3278-2 (24×80) Query Reply:
-//   AID 0x88 + Query Reply (Summary) + Query Reply (Usable Area)
-// This satisfies ISPF's terminal identification before painting its menu.
-std::vector<uint8_t> DataStreamParser::buildQueryReply() {
+// Returns a Query Reply record with Usable Area dimensions taken from the
+// attached ScreenBuffer so the host sees the correct model dimensions.
+std::vector<uint8_t> DataStreamParser::buildQueryReply() const {
     std::vector<uint8_t> r;
+
+    const int rows = screen_.rows();
+    const int cols = screen_.cols();
+    const int sz   = screen_.size();
+    // For screens larger than 4095 cells, advertise 14-bit addressing support.
+    const uint8_t addrMode = (sz > 4095) ? 0x00 : 0x01;
 
     // AID byte: Query Reply (0x88)
     r.push_back(0x88);
@@ -287,18 +293,21 @@ std::vector<uint8_t> DataStreamParser::buildQueryReply() {
 
     // ── Query Reply (Usable Area) — 0x80 ────────────────────────────────────
     // 2+1+1+1+2+2+1+2+2+1+1+2 = 18 bytes  (per IBM GA23-0059)
-    r.push_back(0x00); r.push_back(0x12); // length = 18
-    r.push_back(0x80);                    // type: Usable Area
-    r.push_back(0x01);                    // addressing: 12-bit only
-    r.push_back(0x00);                    // flags (reserved)
-    r.push_back(0x00); r.push_back(0x50); // usable cols = 80
-    r.push_back(0x00); r.push_back(0x18); // usable rows = 24
-    r.push_back(0x01);                    // units: mm
-    r.push_back(0x00); r.push_back(0x60); // Xr = 96 units/mm (standard 3278 value)
-    r.push_back(0x00); r.push_back(0x70); // Yr = 112 units/mm
-    r.push_back(0x09);                    // AW = 9 (cell width in Xr units)
-    r.push_back(0x0C);                    // AH = 12 (cell height in Yr units)
-    r.push_back(0x07); r.push_back(0x80); // buffer size = 1920 (24×80)
+    r.push_back(0x00); r.push_back(0x12);                           // length = 18
+    r.push_back(0x80);                                               // type: Usable Area
+    r.push_back(addrMode);                                           // addressing mode
+    r.push_back(0x00);                                               // flags (reserved)
+    r.push_back(static_cast<uint8_t>(cols >> 8));
+    r.push_back(static_cast<uint8_t>(cols & 0xFF));                 // usable cols
+    r.push_back(static_cast<uint8_t>(rows >> 8));
+    r.push_back(static_cast<uint8_t>(rows & 0xFF));                 // usable rows
+    r.push_back(0x01);                                               // units: mm
+    r.push_back(0x00); r.push_back(0x60);                           // Xr = 96 units/mm
+    r.push_back(0x00); r.push_back(0x70);                           // Yr = 112 units/mm
+    r.push_back(0x09);                                               // AW = 9 (cell width)
+    r.push_back(0x0C);                                               // AH = 12 (cell height)
+    r.push_back(static_cast<uint8_t>(sz >> 8));
+    r.push_back(static_cast<uint8_t>(sz & 0xFF));                   // buffer size
 
     // ── Query Reply (Color) — 0x86 ───────────────────────────────────────────
     // Reports 8 standard 3270 extended colors (GA23-0059 §6.7).
