@@ -25,7 +25,9 @@ jobs:
         run: |
           VER=$(grep -m1 'project(X3270 VERSION' CMakeLists.txt \
                 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "version=${VER}"                                   >> "$GITHUB_OUTPUT"
+          echo "build=${{ github.run_number }}"                   >> "$GITHUB_OUTPUT"
+          echo "tag=v${VER}-build${{ github.run_number }}"        >> "$GITHUB_OUTPUT"
 
       # ── 3. Verify the DMGs are actually present ───────────────────────────
       - name: Verify DMGs
@@ -38,23 +40,32 @@ jobs:
           echo "Found DMGs:"
           ls -lh dist/*.dmg
 
-      # ── 4. Delete old 'latest' release so stale assets don't accumulate ──
-      - name: Delete existing latest release
-        run: gh release delete latest --yes --cleanup-tag || true
+      # ── 4. Delete previous builds of this version so only one release exists ─
+      # Finds every release tagged v<VERSION>-build* and removes it before
+      # publishing the new one — keeps the Releases page uncluttered while
+      # still using a distinct build-numbered tag for full traceability.
+      - name: Delete previous releases for this version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release list --limit 100 --json tagName \
+            | jq -r '.[].tagName' \
+            | grep -E "^v${VERSION}-build" \
+            | xargs -I{} gh release delete {} --yes --cleanup-tag \
+            || true
 
-      # ── 5. Publish a fresh 'latest' release with the committed DMGs ───────
+      # ── 5. Publish a fresh versioned release with the committed DMGs ────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: "X3270 v${{ steps.version.outputs.version }}"
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "X3270 v${{ steps.version.outputs.version }} (Build ${{ steps.version.outputs.build }})"
           draft: false
           prerelease: false
           files: dist/*.dmg
           body: |
-            ## X3270 v${{ steps.version.outputs.version }}
+            ## X3270 v${{ steps.version.outputs.version }} — Build ${{ steps.version.outputs.build }}
 
             Free TN3270/TN3270E terminal emulator for macOS.  
             Built from commit ${{ github.sha }} on `main`.
