@@ -24,101 +24,123 @@ jobs:
           echo "build=${{ github.run_number }}"            >> "$GITHUB_OUTPUT"
           echo "tag=v${VER}-build${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
-  # ── Build matrix: one job per architecture ─────────────────────────────────
+  # ── Single Apple Silicon runner — arm64 native + x86_64 cross-compile ────────
+  # Using macos-13 (Intel runner) caused long queue waits (10–20 min).
+  # Instead we build both architectures on one macos-15 runner:
+  #   • arm64  — native Homebrew OpenSSL
+  #   • x86_64 — OpenSSL cross-compiled from source, CMAKE_OSX_ARCHITECTURES
   build:
-    name: Build (${{ matrix.label }})
+    name: Build arm64 + x86_64
     needs: version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Apple Silicon — native build on arm64 runner
-          - runner: macos-15
-            arch:   arm64
-            suffix: ""
-            label:  "Apple Silicon"
-            vol_suffix: ""
-          # Intel — native build on x86_64 runner
-          - runner: macos-13
-            arch:   x86_64
-            suffix: "-Intel"
-            label:  "Intel"
-            vol_suffix: " (Intel)"
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Dependencies ──────────────────────────────────────────────────
-      - name: Install dependencies (Homebrew)
+      # ── 2. Native (arm64) dependencies ───────────────────────────────────
+      - name: Install arm64 dependencies
         run: |
-          brew install openssl@3 cmake
-          echo "OPENSSL_ROOT=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+          brew install cmake openssl@3
+          echo "ARM64_OPENSSL=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
 
-      # ── 3. CMake configure ───────────────────────────────────────────────
-      - name: Configure
+      # ── 3. Build x86_64 OpenSSL from source (cross-compile) ──────────────
+      # We can't use the arm64 Homebrew bottles for x86_64 linking, so we
+      # compile OpenSSL from the same upstream source, targeting x86_64.
+      - name: Build x86_64 OpenSSL from source
         run: |
-          cmake -B build_ci \
+          OPENSSL_VER=$(brew list --versions openssl@3 | awk '{print $2}')
+          echo "Cross-compiling OpenSSL ${OPENSSL_VER} for x86_64..."
+          INSTDIR="/tmp/openssl-x86_64"
+
+          curl -fsSL "https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz" \
+            | tar xz -C /tmp
+
+          cd "/tmp/openssl-${OPENSSL_VER}"
+          ./Configure darwin64-x86_64-cc no-shared no-tests \
+            CC=clang \
+            CFLAGS="-arch x86_64 -mmacosx-version-min=12.0" \
+            LDFLAGS="-arch x86_64 -mmacosx-version-min=12.0" \
+            --prefix="${INSTDIR}"
+          make -j$(sysctl -n hw.logicalcpu) build_sw 2>&1 | tail -5
+          make install_sw
+
+          echo "X86_64_OPENSSL=${INSTDIR}" >> "$GITHUB_ENV"
+
+      # ── 4. Configure + build (arm64) ──────────────────────────────────────
+      - name: Configure (arm64)
+        run: |
+          cmake -B build_arm64 \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
-            -DOPENSSL_ROOT_DIR="${OPENSSL_ROOT}" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DOPENSSL_ROOT_DIR="${ARM64_OPENSSL}" \
             -DBUILD_NUMBER=${{ needs.version.outputs.build }}
 
-      # ── 4. Build ─────────────────────────────────────────────────────────
-      - name: Build
-        run: cmake --build build_ci --config Release --parallel $(sysctl -n hw.logicalcpu)
+      - name: Build (arm64)
+        run: cmake --build build_arm64 --config Release --parallel $(sysctl -n hw.logicalcpu)
 
-      # ── 5. Verify architecture ───────────────────────────────────────────
-      - name: Verify binary architecture
+      # ── 5. Configure + build (x86_64) ─────────────────────────────────────
+      - name: Configure (x86_64)
         run: |
-          BINARY="build_ci/X3270.app/Contents/MacOS/X3270"
-          BUILT_ARCH=$(lipo -archs "${BINARY}")
-          echo "Binary architecture: ${BUILT_ARCH}"
-          if [[ "${BUILT_ARCH}" != *"${{ matrix.arch }}"* ]]; then
-            echo "ERROR: Expected ${{ matrix.arch }}, got ${BUILT_ARCH}" >&2
-            exit 1
-          fi
+          cmake -B build_x86_64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DOPENSSL_ROOT_DIR="${X86_64_OPENSSL}" \
+            -DBUILD_NUMBER=${{ needs.version.outputs.build }}
 
-      # ── 6. Package DMG ───────────────────────────────────────────────────
-      - name: Package DMG
+      - name: Build (x86_64)
+        run: cmake --build build_x86_64 --config Release --parallel $(sysctl -n hw.logicalcpu)
+
+      # ── 6. Package both DMGs ──────────────────────────────────────────────
+      - name: Package DMGs
         env:
-          VERSION:    ${{ needs.version.outputs.version }}
-          BUILD_NUM:  ${{ needs.version.outputs.build }}
+          VERSION:   ${{ needs.version.outputs.version }}
+          BUILD_NUM: ${{ needs.version.outputs.build }}
         run: |
-          APP_PATH="$(pwd)/build_ci/X3270.app"
-          DMG_NAME="X3270-${VERSION}-build${BUILD_NUM}${{ matrix.suffix }}"
-          STAGING="$(mktemp -d)"
           mkdir -p dist
 
-          cp -R "$APP_PATH" "${STAGING}/X3270.app"
-          ln -s /Applications "${STAGING}/Applications"
+          package_dmg() {
+            local BUILD_DIR="$1" SUFFIX="$2" VOL_SUFFIX="$3"
+            local DMG_NAME="X3270-${VERSION}-build${BUILD_NUM}${SUFFIX}"
+            local STAGING
+            STAGING="$(mktemp -d)"
 
-          hdiutil create \
-            -volname "X3270 ${VERSION}${{ matrix.vol_suffix }}" \
-            -srcfolder "${STAGING}" \
-            -ov -format UDRW \
-            "dist/${DMG_NAME}-rw.dmg" > /dev/null
+            echo "Packaging ${DMG_NAME}..."
+            echo "  Architecture: $(lipo -archs "${BUILD_DIR}/X3270.app/Contents/MacOS/X3270")"
 
-          hdiutil convert \
-            "dist/${DMG_NAME}-rw.dmg" \
-            -format UDZO -imagekey zlib-level=9 \
-            -ov \
-            -o "dist/${DMG_NAME}.dmg" > /dev/null
+            cp -R "${BUILD_DIR}/X3270.app" "${STAGING}/X3270.app"
+            ln -s /Applications "${STAGING}/Applications"
 
-          rm -f "dist/${DMG_NAME}-rw.dmg"
-          echo "DMG ready:"
+            hdiutil create \
+              -volname "X3270 ${VERSION}${VOL_SUFFIX}" \
+              -srcfolder "${STAGING}" \
+              -ov -format UDRW \
+              "dist/${DMG_NAME}-rw.dmg" > /dev/null
+
+            hdiutil convert \
+              "dist/${DMG_NAME}-rw.dmg" \
+              -format UDZO -imagekey zlib-level=9 \
+              -ov \
+              -o "dist/${DMG_NAME}.dmg" > /dev/null
+
+            rm -f "dist/${DMG_NAME}-rw.dmg"
+            rm -rf "${STAGING}"
+          }
+
+          package_dmg "build_arm64"  ""        ""
+          package_dmg "build_x86_64" "-Intel"  " (Intel)"
+
           ls -lh dist/
 
-      # ── 7. Upload artifact for release job ───────────────────────────────
-      - name: Upload DMG artifact
+      # ── 7. Upload both DMGs as one artifact ───────────────────────────────
+      - name: Upload DMG artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dmg-${{ matrix.arch }}
+          name: dmgs
           path: dist/*.dmg
           retention-days: 1
 
-  # ── Collect both DMGs and publish a single GitHub Release ─────────────────
+  # ── Publish GitHub Release ────────────────────────────────────────────────
   release:
     name: Publish GitHub Release
     needs: [version, build]
@@ -127,12 +149,11 @@ jobs:
       contents: write
 
     steps:
-      # ── 8. Download all DMG artifacts ────────────────────────────────────
+      # ── 8. Download DMG artifacts ─────────────────────────────────────────
       - name: Download DMG artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: dmg-*
-          merge-multiple: true
+          name: dmgs
           path: dist/
 
       - name: List artifacts
