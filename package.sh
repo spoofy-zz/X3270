@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# package.sh — Build X3270 in Release mode and wrap it in a distributable DMG.
+# package.sh — Build DX3270 in Release mode and wrap it in a distributable DMG.
 #
 # Usage:
 #   ./package.sh               # uses BUILD_NUMBER=1 (default)
 #   BUILD_NUMBER=42 ./package.sh
 #
 # Output:
-#   dist/X3270-<version>-build<BUILD_NUMBER>.dmg
+#   dist/DX3270-<version>-build<BUILD_NUMBER>.dmg
 
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
-APP_NAME="X3270"
-VERSION="1.4.0"
+APP_NAME="DX3270"
+VERSION="1.5.0"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 DMG_NAME="${APP_NAME}-${VERSION}-build${BUILD_NUMBER}"
 BUILD_DIR="$(pwd)/build_release"
@@ -82,4 +82,4 @@ echo ""
 echo "    Version     : ${VERSION}"
 echo "    Build number: ${BUILD_NUMBER}"
 echo ""
-echo "To install: open the DMG and drag X3270 to /Applications"
+echo "To install: open the DMG and drag DX3270 to /Applications"

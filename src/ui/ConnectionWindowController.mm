@@ -24,7 +24,7 @@
                                         |NSWindowStyleMaskMiniaturizable
                                backing:NSBackingStoreBuffered
                                   defer:NO];
-    win.title = @"X3270 — Connect to Host";
+    win.title = @"DX3270 — Connect to Host";
     win.releasedWhenClosed = NO;
     [win center];
 
@@ -44,9 +44,9 @@
     __block CGFloat curY = 270;
 
     // ── Header: app name, version and author ──────────────────────────────────
-    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.4.0";
+    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.5.0";
 
-    NSTextField *appName = [NSTextField labelWithString:@"X3270"];
+    NSTextField *appName = [NSTextField labelWithString:@"DX3270"];
     appName.font = [NSFont boldSystemFontOfSize:16];
     appName.alignment = NSTextAlignmentCenter;
     appName.frame = NSMakeRect(margin, 374, hdrW, 24);

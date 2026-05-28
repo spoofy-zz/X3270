@@ -45,7 +45,7 @@
                                         |NSWindowStyleMaskResizable
                                backing:NSBackingStoreBuffered
                                   defer:NO];
-    win.title = [NSString stringWithFormat:@"%@:%d — X3270", host, port];
+    win.title = [NSString stringWithFormat:@"%@:%d — DX3270", host, port];
     win.releasedWhenClosed = NO;
     [win center];
 
@@ -218,7 +218,7 @@
 - (IBAction)saveScreenshot:(id)sender {
     NSSavePanel *panel = [NSSavePanel savePanel];
     panel.allowedFileTypes = @[@"png"];
-    panel.nameFieldStringValue = @"X3270_screenshot.png";
+    panel.nameFieldStringValue = @"DX3270_screenshot.png";
     panel.message = @"Save a PNG image of the current terminal screen.";
 
     [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
@@ -268,7 +268,7 @@
 
     NSSavePanel *panel = [NSSavePanel savePanel];
     panel.allowedFileTypes = @[@"txt"];
-    panel.nameFieldStringValue = @"X3270_export.txt";
+    panel.nameFieldStringValue = @"DX3270_export.txt";
     panel.message = @"Export the current terminal screen as plain text.";
 
     [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {

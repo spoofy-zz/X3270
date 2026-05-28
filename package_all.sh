@@ -6,8 +6,8 @@
 #   BUILD_NUMBER=42 ./package_all.sh
 #
 # Output (both in dist/):
-#   X3270-<version>-build<BUILD_NUMBER>.dmg          ← Apple Silicon
-#   X3270-<version>-build<BUILD_NUMBER>-Intel.dmg    ← Intel / older Macs
+#   DX3270-<version>-build<BUILD_NUMBER>.dmg          ← Apple Silicon
+#   DX3270-<version>-build<BUILD_NUMBER>-Intel.dmg    ← Intel / older Macs
 
 set -euo pipefail
 
@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export BUILD_NUMBER="${BUILD_NUMBER:-1}"
 
 echo "======================================================"
-echo "  X3270 — Full Deployment Build (build ${BUILD_NUMBER})"
+echo "  DX3270 — Full Deployment Build (build ${BUILD_NUMBER})"
 echo "======================================================"
 echo ""
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(X3270 VERSION 1.4.0 LANGUAGES CXX OBJCXX)
+project(DX3270 VERSION 1.5.0 LANGUAGES CXX OBJCXX)
 
 # ── Version / Build number ────────────────────────────────────────────────────
 # Override on the command line: cmake -DBUILD_NUMBER=42 ..
@@ -32,30 +32,31 @@ set(UI_SOURCES
     src/ui/TerminalView.mm
     src/ui/TerminalWindowController.mm
     src/ui/PreferencesWindowController.mm
+    src/ui/ShortcutsWindowController.mm
 )
 
 # ── App Bundle ────────────────────────────────────────────────────────────────
-add_executable(X3270 MACOSX_BUNDLE
+add_executable(DX3270 MACOSX_BUNDLE
     ${CORE_SOURCES}
     ${UI_SOURCES}
 )
 
-set_target_properties(X3270 PROPERTIES
+set_target_properties(DX3270 PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/resources/Info.plist"
-    MACOSX_BUNDLE_BUNDLE_NAME "X3270"
+    MACOSX_BUNDLE_BUNDLE_NAME "DX3270"
     MACOSX_BUNDLE_BUNDLE_VERSION "${BUILD_NUMBER}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "com.x3270.macos"
-    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.x3270.macos"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.dx3270.macos"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.dx3270.macos"
 )
 
-target_include_directories(X3270 PRIVATE
+target_include_directories(DX3270 PRIVATE
     src/core
     src/ui
     ${OPENSSL_INCLUDE_DIR}
 )
 
-target_link_libraries(X3270 PRIVATE
+target_link_libraries(DX3270 PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
     "-framework AppKit"
@@ -64,7 +65,7 @@ target_link_libraries(X3270 PRIVATE
     "-framework CoreGraphics"
 )
 
-target_compile_options(X3270 PRIVATE
+target_compile_options(DX3270 PRIVATE
     -Wall
     -Wextra
     -Wno-unused-parameter
@@ -77,9 +78,18 @@ set(FONT_RESOURCES
     resources/fonts/3270SemiCondensed-Regular.otf
     resources/fonts/3270Condensed-Regular.otf
 )
-target_sources(X3270 PRIVATE ${FONT_RESOURCES})
+target_sources(DX3270 PRIVATE ${FONT_RESOURCES})
 set_source_files_properties(${FONT_RESOURCES} PROPERTIES
     MACOSX_PACKAGE_LOCATION "Resources/fonts"
+)
+
+# ── App icon ──────────────────────────────────────────────────────────────────
+target_sources(DX3270 PRIVATE resources/AppIcon.icns)
+set_source_files_properties(resources/AppIcon.icns PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources"
+)
+set_target_properties(DX3270 PROPERTIES
+    MACOSX_BUNDLE_ICON_FILE "AppIcon"
 )
 
 # ── Compile .mm files as Objective-C++ with ARC ──────────────────────────────

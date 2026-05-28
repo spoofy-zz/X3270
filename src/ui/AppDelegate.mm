@@ -1,6 +1,7 @@
 #import "AppDelegate.h"
 #import "ConnectionWindowController.h"
 #import "PreferencesWindowController.h"
+#import "ShortcutsWindowController.h"
 
 @implementation AppDelegate
 
@@ -23,9 +24,9 @@
     // Application menu
     NSMenuItem *appMenuItem = [[NSMenuItem alloc] init];
     [menuBar addItem:appMenuItem];
-    NSMenu *appMenu = [[NSMenu alloc] initWithTitle:@"X3270"];
+    NSMenu *appMenu = [[NSMenu alloc] initWithTitle:@"DX3270"];
     appMenuItem.submenu = appMenu;
-    [appMenu addItemWithTitle:@"About X3270"
+    [appMenu addItemWithTitle:@"About DX3270"
                        action:@selector(showAbout:)
                 keyEquivalent:@""];
     [appMenu addItem:[NSMenuItem separatorItem]];
@@ -33,7 +34,11 @@
                        action:@selector(openPreferences:)
                 keyEquivalent:@","];
     [appMenu addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *quitItem = [appMenu addItemWithTitle:@"Quit X3270"
+    [appMenu addItemWithTitle:@"Keyboard Shortcuts…"
+                       action:@selector(openShortcuts:)
+                keyEquivalent:@"/"];
+    [appMenu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *quitItem = [appMenu addItemWithTitle:@"Quit DX3270"
                                              action:@selector(terminate:)
                                       keyEquivalent:@"q"];
     quitItem.target = NSApp;
@@ -85,7 +90,7 @@
 
 - (void)showAbout:(id)sender {
     NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-    NSString *version  = info[@"CFBundleShortVersionString"] ?: @"1.4.0";
+    NSString *version  = info[@"CFBundleShortVersionString"] ?: @"1.5.0";
     NSString *build    = info[@"CFBundleVersion"]            ?: @"1";
 
     NSString *credits =
@@ -107,6 +112,10 @@
 
 - (void)openPreferences:(id)sender {
     [[PreferencesWindowController sharedController] showWindow:nil];
+}
+
+- (void)openShortcuts:(id)sender {
+    [[ShortcutsWindowController sharedController] showWindow:nil];
 }
 
 @end

@@ -15,7 +15,7 @@
                                             |NSWindowStyleMaskClosable
                                    backing:NSBackingStoreBuffered
                                       defer:NO];
-        win.title = @"X3270 — Preferences";
+        win.title = @"DX3270 — Preferences";
         win.releasedWhenClosed = NO;
         [win center];
         shared = [[PreferencesWindowController alloc] initWithWindow:win];

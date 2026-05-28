@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# package_intel.sh — Cross-compile X3270 for Intel (x86_64) on Apple Silicon
+# package_intel.sh — Cross-compile DX3270 for Intel (x86_64) on Apple Silicon
 #                    and wrap it in a distributable DMG.
 #
 # Prerequisites (one-time setup):
@@ -15,13 +15,13 @@
 #   BUILD_NUMBER=42 ./package_intel.sh
 #
 # Output:
-#   dist/X3270-<version>-build<BUILD_NUMBER>-Intel.dmg
+#   dist/DX3270-<version>-build<BUILD_NUMBER>-Intel.dmg
 
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
-APP_NAME="X3270"
-VERSION="1.4.0"
+APP_NAME="DX3270"
+VERSION="1.5.0"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 ARCH="x86_64"
 DMG_NAME="${APP_NAME}-${VERSION}-build${BUILD_NUMBER}-Intel"
@@ -147,4 +147,4 @@ echo "    Architecture: Intel (x86_64)"
 echo "    Version     : ${VERSION}"
 echo "    Build number: ${BUILD_NUMBER}"
 echo ""
-echo "To install: open the DMG and drag X3270 to /Applications"
+echo "To install: open the DMG and drag DX3270 to /Applications"

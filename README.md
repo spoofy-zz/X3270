@@ -1,4 +1,4 @@
-# X3270 — Free TN3270 Terminal Emulator for macOS
+# DX3270 — Free TN3270 Terminal Emulator for macOS
 
 A native macOS (ARM - Apple Silicon + Intel) TN3270/TN3270E terminal emulator for connecting to IBM Mainframes (z/OS, z/VM, z/VSE).  
 Built entirely in C++ and Objective-C++ on top of native Cocoa, CoreText and OpenSSL.  
@@ -22,7 +22,7 @@ If you work in Mainframe and you're tired of paying for the privilege, this is f
 
 ## Screenshot
 
-![ISPF Primary Option Menu running inside X3270](screenshots/screenshot.png)
+![ISPF Primary Option Menu running inside DX3270](screenshots/screenshot.png)
 
 *ISPF 8.1 Primary Option Menu on z/OS — connected to IBM ZExplore mainframe at 204.90.115.200:623*
 
@@ -30,7 +30,7 @@ If you work in Mainframe and you're tired of paying for the privilege, this is f
 
 ## IBM 3270 Font
 
-X3270 ships with the authentic **IBM 3270 terminal font** by [Ricardo Bánffy](https://github.com/rbanffy/3270font), bundled directly in the app. It is off by default so the familiar Menlo monospace is used out of the box.
+DX3270 ships with the authentic **IBM 3270 terminal font** by [Ricardo Bánffy](https://github.com/rbanffy/3270font), bundled directly in the app. It is off by default so the familiar Menlo monospace is used out of the box.
 
 ![Terminal with IBM 3270 font active](screenshots/Screenshot_IBM_FONT.png)
 
@@ -38,7 +38,7 @@ X3270 ships with the authentic **IBM 3270 terminal font** by [Ricardo Bánffy](h
 
 ### How to activate
 
-1. Open **X3270 → Preferences** (⌘,)
+1. Open **DX3270 → Preferences** (⌘,)
 2. Check **"Use IBM 3270 font (by Ricardo Bánffy)"**
 3. All open terminal windows switch instantly — no reconnect needed
 
@@ -58,6 +58,8 @@ The setting is saved and restored on every launch.
 | **Keyboard** | PF1–PF24, PA1–PA3, Clear, Reset, Tab/BackTab, ErEOF, Insert, arrows |
 | **Query Reply** | Responds to IBM Structured Field Read Partition Query (required for ISPF) |
 | **Rendering** | CoreText glyph metrics for pixel-perfect character grid |
+| **App icon** | Native macOS squircle icon — white gradient, bold DX3270 lettering with green terminal cursor, bundled as `AppIcon.icns` |
+| **Shortcuts reference** | Built-in keyboard shortcuts window — DX3270 → Keyboard Shortcuts… (`⌘/`) |
 | **Screenshot** | Save the terminal screen as a PNG image (File → Save Screenshot… `⌘⇧P`) |
 | **Text export** | Export the screen content as a formatted UTF-8 text file (File → Export as Text… `⌘⇧T`) |
 | **macOS** | 12 Monterey and later (Apple Silicon + Intel) |
@@ -71,18 +73,38 @@ Every push to `main` automatically builds and publishes **two DMGs** via GitHub 
 
 | DMG | For |
 |---|---|
-| `X3270-<version>-build<N>.dmg` | **Apple Silicon** Macs (M1/M2/M3/M4, 2020 and later) |
-| `X3270-<version>-build<N>-Intel.dmg` | **Intel** Macs (2019 and earlier) |
+| `DX3270-<version>-build<N>.dmg` | **Apple Silicon** Macs (M1/M2/M3/M4, 2020 and later) |
+| `DX3270-<version>-build<N>-Intel.dmg` | **Intel** Macs (2019 and earlier) |
 
 1. Download the DMG that matches your Mac
-2. Open the DMG and drag **X3270.app** to your `/Applications` folder
-3. On first launch: right-click → **Open** (macOS Gatekeeper; the app is unsigned)
+2. Open the DMG and drag **DX3270.app** to your `/Applications` folder
+3. On first launch macOS will block the app because it is unsigned — see below
+
+### First-launch: bypassing macOS Gatekeeper
+
+DX3270 is currently unsigned (a Developer ID certificate is planned for a future release once the remaining bugs are ironed out). macOS will refuse to open it directly. There are two ways around this:
+
+**Option A — System Settings (GUI)**
+
+1. Try to open **DX3270.app** — dismiss the *"damaged or can't be opened"* alert
+2. Open **System Settings → Privacy & Security**
+3. Scroll down — a banner appears: *"DX3270 was blocked because it is not from an identified developer"*
+4. Click **Open Anyway**
+5. Confirm in the following dialog — the app launches and macOS remembers the choice
+
+**Option B — Terminal (one-time command)**
+
+```bash
+sudo xattr -r -d com.apple.quarantine /Applications/DX3270.app
+```
+
+This strips the quarantine flag that triggers Gatekeeper. After running it, DX3270 opens normally from Finder or the Dock without any further prompts.
 
 ---
 
 ## Connecting to a Mainframe
 
-1. Launch X3270 — the **Connect** dialog opens automatically
+1. Launch DX3270 — the **Connect** dialog opens automatically
 2. Fill in:
    | Field | Example |
    |---|---|
@@ -113,6 +135,18 @@ The terminal window opens. Type your credentials at the logon screen. ISPF and T
 | `Option`+`E` | Erase Input (all unprotected fields) |
 | `↑` `↓` `←` `→` | Cursor movement |
 
+### Application shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `⌘N` | New Connection |
+| `⌘,` | Preferences |
+| `⌘⇧P` | Save Screenshot |
+| `⌘⇧T` | Export Screen as Text |
+| `⌘⇧D` | Traffic Monitor |
+| `⌘/` | Keyboard Shortcuts window |
+| `⌘Q` | Quit DX3270 |
+
 ---
 
 ## Building from Source
@@ -134,7 +168,7 @@ git clone https://github.com/el-dockerr/X3270.git
 cd X3270
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-open build/X3270.app
+open build/DX3270.app
 ```
 
 To set an explicit build number (useful in CI):
@@ -149,20 +183,20 @@ cmake --build build
 **Apple Silicon only:**
 ```bash
 ./package.sh
-# produces: dist/X3270-1.3.0-build1.dmg
+# produces: dist/DX3270-1.5.0-build1.dmg
 ```
 
 **Intel only** (cross-compiled from Apple Silicon — see prerequisites below):
 ```bash
 ./package_intel.sh
-# produces: dist/X3270-1.3.0-build1-Intel.dmg
+# produces: dist/DX3270-1.5.0-build1-Intel.dmg
 ```
 
 **Both architectures in one step:**
 ```bash
 BUILD_NUMBER=42 ./package_all.sh
-# produces: dist/X3270-1.3.0-build42.dmg
-#           dist/X3270-1.3.0-build42-Intel.dmg
+# produces: dist/DX3270-1.5.0-build42.dmg
+#           dist/DX3270-1.5.0-build42-Intel.dmg
 ```
 
 ### Cross-compiling for Intel from Apple Silicon
@@ -190,6 +224,17 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 
 ## Version History
 
+### v1.5.0 — 2026-05-28
+
+**App renamed to DX3270**
+- The app is now called **DX3270** (Dockerr's X3270) across every visible surface — menus, window titles, DMG filenames, bundle identifier (`com.dx3270.macos`), OIA status bar, and default export filenames — to avoid confusion with the separate open-source x3270 project.
+
+**Native app icon**
+- A purpose-built macOS icon is now bundled as `AppIcon.icns` (all 10 iconset sizes, 16 px – 1024 px). Design: Apple squircle shape, white-to-light-indigo gradient background, bold **DX3270** lettering in the system SF font with a green terminal-cursor block, and a *TN3270 Terminal* subtitle in secondary-label gray.
+
+**Keyboard Shortcuts window**
+- **DX3270 → Keyboard Shortcuts…** (`⌘/`) opens a floating, read-only reference window listing every terminal key and application shortcut, organised into four sections: *Function Keys*, *Session Control*, *Navigation & Editing*, and *Application*.
+
 ### v1.4.0 — 2026-05-27
 
 **Screenshot and text export**
@@ -214,7 +259,7 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 
 **IBM 3270 font support**
 - **Bundled IBM 3270 font** — The authentic [3270font](https://github.com/rbanffy/3270font) by **Ricardo Bánffy** is now shipped inside the app bundle (three variants: Regular, SemiCondensed, Condensed).
-- **Optional via Preferences** — A new checkbox in **X3270 → Preferences** ("Use IBM 3270 font") switches the terminal between the default Menlo font and the 3270 font at runtime. The setting persists across app launches.
+- **Optional via Preferences** — A new checkbox in **DX3270 → Preferences** ("Use IBM 3270 font") switches the terminal between the default Menlo font and the 3270 font at runtime. The setting persists across app launches.
 - **Live switching** — Changing the preference immediately redraws all open terminal windows and resizes them to match the new cell dimensions.
 - **Attribution** — The 3270font is the work of Ricardo Bánffy and contributors, released under the SIL Open Font License 1.1. See [Acknowledgements](#acknowledgements) below.
 
@@ -281,7 +326,7 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 ## Acknowledgements
 
 **IBM 3270 Terminal Font**  
-The optional terminal font bundled with X3270 is [3270font](https://github.com/rbanffy/3270font), designed and maintained by **Ricardo Bánffy** and contributors.  
+The optional terminal font bundled with DX3270 is [3270font](https://github.com/rbanffy/3270font), designed and maintained by **Ricardo Bánffy** and contributors.  
 It is derived from the classic x3270 bitmap font, redrawn as a modern vector typeface in OTF/TTF format.  
 The font is distributed under the **SIL Open Font License, Version 1.1** — see [LICENSE.txt](https://github.com/rbanffy/3270font/blob/main/LICENSE.txt) in the upstream repository.  
 Many thanks to Ricardo and all contributors to that project for their meticulous work keeping this piece of mainframe history alive.
@@ -290,7 +335,7 @@ Many thanks to Ricardo and all contributors to that project for their meticulous
 
 ## License
 
-X3270 for macOS is released under the **MIT License**.  
+DX3270 for macOS is released under the **MIT License**.  
 See [LICENSE](LICENSE) for the full text.
 
 Written by Swen Kalski, 2026.
