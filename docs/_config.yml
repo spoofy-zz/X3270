@@ -1,0 +1,23 @@
+# GitHub Pages configuration
+# Site is served from the docs/ folder as a plain HTML site (no Jekyll theme).
+
+title: DX3270 — Free TN3270 Terminal Emulator for macOS
+description: >
+  Native macOS TN3270E terminal emulator for IBM Mainframes. No Java. No X11.
+  No license fee. Apple Silicon + Intel. Built on Cocoa, CoreText, and OpenSSL.
+
+url: "https://el-dockerr.github.io"
+baseurl: "/X3270"
+
+# Disable Jekyll processing — the site is plain HTML/CSS
+plugins: []
+
+# Exclude build artifacts from the Jekyll build
+exclude:
+  - "*.sh"
+  - build/
+  - build_release/
+  - build_release_intel/
+  - mocksvr/
+  - src/
+  - resources/

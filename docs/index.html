@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DX3270 — Free TN3270 Terminal Emulator for macOS</title>
+  <meta name="description" content="A native macOS TN3270/TN3270E terminal emulator for IBM Mainframes. No Java. No X11. No license fee. Free, open-source, Apple Silicon + Intel." />
+  <meta property="og:title" content="DX3270 — Free TN3270 for macOS" />
+  <meta property="og:description" content="Native Cocoa TN3270E emulator. Connects to z/OS, z/VM, z/VSE. Free and open source." />
+  <meta property="og:image" content="https://raw.githubusercontent.com/el-dockerr/X3270/main/screenshots/screenshot.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='monospace' font-weight='bold' font-size='14' fill='%2300ff41'%3E%3E_%3C/text%3E%3C/svg%3E" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green:    #00ff41;
+      --green-dim:#00c832;
+      --green-bg: #001a08;
+      --bg:       #0a0a0a;
+      --bg2:      #111111;
+      --bg3:      #1a1a1a;
+      --border:   #1e3a1e;
+      --text:     #c8d8c8;
+      --text-dim: #6a8a6a;
+      --white:    #e8f0e8;
+      --red:      #ff4040;
+      --yellow:   #ffd040;
+      --blue:     #40a0ff;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10,10,10,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: 56px;
+    }
+    .nav-logo {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--green);
+      text-decoration: none;
+      letter-spacing: 0.04em;
+    }
+    .nav-logo span { color: var(--text-dim); font-weight: 400; }
+    .nav-links { display: flex; gap: 1.5rem; list-style: none; }
+    .nav-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--green); }
+    .nav-cta {
+      background: var(--green);
+      color: #000 !important;
+      font-weight: 600;
+      padding: 0.3rem 0.9rem;
+      border-radius: 6px;
+      font-size: 0.8rem !important;
+    }
+    .nav-cta:hover { background: var(--green-dim) !important; color: #000 !important; }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 6rem 2rem 4rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% 0%, rgba(0,255,65,0.06) 0%, transparent 70%),
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 3px,
+          rgba(0,255,65,0.015) 3px,
+          rgba(0,255,65,0.015) 4px
+        );
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--green-bg);
+      border: 1px solid var(--green);
+      border-radius: 100px;
+      padding: 0.3rem 1rem;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.75rem;
+      color: var(--green);
+      margin-bottom: 2rem;
+      letter-spacing: 0.05em;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+    .hero h1 {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: clamp(3rem, 8vw, 6rem);
+      font-weight: 700;
+      color: var(--white);
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin-bottom: 0.4rem;
+    }
+    .hero h1 .cursor {
+      display: inline-block;
+      width: 0.55em;
+      height: 1em;
+      background: var(--green);
+      margin-left: 4px;
+      vertical-align: bottom;
+      animation: blink 600ms step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+    .hero-sub {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: clamp(0.9rem, 2vw, 1.1rem);
+      color: var(--green-dim);
+      margin-bottom: 1.5rem;
+      letter-spacing: 0.04em;
+    }
+    .hero-tagline {
+      font-size: clamp(1rem, 2.5vw, 1.25rem);
+      color: var(--text);
+      max-width: 600px;
+      margin: 0 auto 2.5rem;
+      line-height: 1.7;
+    }
+    .hero-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      justify-content: center;
+      margin-bottom: 2.5rem;
+    }
+    .pill {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 0.3rem 0.9rem;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+    .pill.green { border-color: var(--green); color: var(--green); background: var(--green-bg); }
+
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      margin-bottom: 4rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.8rem 1.8rem;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--green);
+      color: #000;
+    }
+    .btn-primary:hover {
+      background: var(--green-dim);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(0,255,65,0.25);
+    }
+    .btn-secondary {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--white);
+    }
+    .btn-secondary:hover {
+      border-color: var(--green);
+      color: var(--green);
+      transform: translateY(-1px);
+    }
+    .btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+    /* ── SCREENSHOT ── */
+    .screenshot-wrap {
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto;
+      position: relative;
+    }
+    .screenshot-wrap::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(0,255,65,0.3) 0%, transparent 60%);
+      z-index: 0;
+    }
+    .screenshot-wrap img {
+      width: 100%;
+      border-radius: 14px;
+      display: block;
+      position: relative;
+      z-index: 1;
+      box-shadow: 0 40px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(0,255,65,0.2);
+    }
+    .screenshot-caption {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    /* ── SECTIONS ── */
+    section { padding: 6rem 2rem; }
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    .section-label {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.75rem;
+      color: var(--green);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+    .section-title {
+      font-size: clamp(1.8rem, 4vw, 2.75rem);
+      font-weight: 700;
+      color: var(--white);
+      line-height: 1.2;
+      margin-bottom: 1rem;
+    }
+    .section-desc {
+      color: var(--text-dim);
+      max-width: 580px;
+      line-height: 1.7;
+      font-size: 1rem;
+    }
+
+    /* ── WHY ── */
+    .why { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .why-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+      margin-top: 3rem;
+    }
+    .why-card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.75rem;
+      transition: border-color 0.2s;
+    }
+    .why-card:hover { border-color: rgba(0,255,65,0.4); }
+    .why-card .icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      background: var(--green-bg);
+      border: 1px solid rgba(0,255,65,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1rem;
+      font-size: 1.3rem;
+    }
+    .why-card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--white);
+      margin-bottom: 0.5rem;
+    }
+    .why-card p { font-size: 0.875rem; color: var(--text-dim); line-height: 1.6; }
+
+    /* ── FEATURES TABLE ── */
+    .features-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 2.5rem;
+      font-size: 0.9rem;
+    }
+    .features-table th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .features-table td {
+      padding: 0.9rem 1rem;
+      border-bottom: 1px solid rgba(30,58,30,0.5);
+      vertical-align: top;
+    }
+    .features-table td:first-child {
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: var(--green);
+      white-space: nowrap;
+      font-size: 0.825rem;
+      width: 30%;
+    }
+    .features-table td:last-child { color: var(--text); }
+    .features-table tr:hover td { background: rgba(0,255,65,0.03); }
+
+    /* ── SCREENSHOTS GALLERY ── */
+    .gallery { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 1.5rem;
+      margin-top: 3rem;
+    }
+    .gallery-item {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .gallery-item:hover {
+      border-color: rgba(0,255,65,0.4);
+      transform: translateY(-2px);
+    }
+    .gallery-item img {
+      width: 100%;
+      display: block;
+    }
+    .gallery-item figcaption {
+      padding: 0.75rem 1rem;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      background: var(--bg3);
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    /* ── DOWNLOAD ── */
+    #download { scroll-margin-top: 70px; }
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      margin-top: 3rem;
+    }
+    .download-card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .download-card.featured {
+      border-color: rgba(0,255,65,0.5);
+      background: linear-gradient(135deg, var(--green-bg) 0%, var(--bg3) 100%);
+    }
+    .download-card .arch {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      color: var(--green);
+      text-transform: uppercase;
+    }
+    .download-card h3 {
+      font-size: 1.25rem;
+      color: var(--white);
+      font-weight: 700;
+    }
+    .download-card p { font-size: 0.875rem; color: var(--text-dim); flex: 1; }
+
+    /* ── SETUP ── */
+    .setup-steps { display: flex; flex-direction: column; gap: 1.5rem; margin-top: 3rem; }
+    .step {
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-start;
+    }
+    .step-num {
+      flex-shrink: 0;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--green-bg);
+      border: 1px solid rgba(0,255,65,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "SF Mono", monospace;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--green);
+    }
+    .step-body h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--white);
+      margin-bottom: 0.35rem;
+    }
+    .step-body p { font-size: 0.875rem; color: var(--text-dim); }
+
+    /* ── CODE BLOCK ── */
+    pre {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      margin-top: 0.75rem;
+    }
+    code {
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      font-size: 0.85rem;
+      color: var(--green);
+    }
+    .comment { color: var(--text-dim); }
+
+    /* ── GATEKEEPER ── */
+    .gatekeeper {
+      background: rgba(255,64,64,0.06);
+      border: 1px solid rgba(255,64,64,0.25);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      margin-top: 2rem;
+      font-size: 0.875rem;
+    }
+    .gatekeeper .warn-icon { flex-shrink: 0; color: var(--red); font-size: 1.2rem; }
+    .gatekeeper strong { color: var(--red); }
+    .gatekeeper p { color: var(--text-dim); margin-top: 0.25rem; }
+
+    /* ── KEYBOARD MAP ── */
+    .keymap-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2.5rem;
+    }
+    .keymap-group h4 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 0.75rem;
+    }
+    .keymap-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .keymap-table td { padding: 0.5rem 0; border-bottom: 1px solid rgba(30,58,30,0.4); }
+    .keymap-table td:first-child {
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: var(--white);
+    }
+    .keymap-table td:last-child { color: var(--text-dim); text-align: right; }
+    kbd {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: "SF Mono", monospace;
+      font-size: 0.78rem;
+      color: var(--white);
+    }
+
+    /* ── STRIPE DONATION ── */
+    .support-banner {
+      background: linear-gradient(135deg, rgba(0,255,65,0.08) 0%, rgba(0,200,50,0.04) 100%);
+      border: 1px solid rgba(0,255,65,0.25);
+      border-radius: 16px;
+      padding: 3rem 2.5rem;
+      text-align: center;
+      margin-top: 4rem;
+    }
+    .support-banner h3 { font-size: 1.5rem; color: var(--white); margin-bottom: 0.75rem; }
+    .support-banner p { color: var(--text-dim); margin-bottom: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2.5rem 2rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+    footer a { color: var(--text-dim); text-decoration: none; }
+    footer a:hover { color: var(--green); }
+    .footer-links { display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 640px) {
+      nav { padding: 0 1rem; }
+      .nav-links { display: none; }
+      section { padding: 4rem 1.25rem; }
+      .btn { padding: 0.7rem 1.3rem; font-size: 0.875rem; }
+      .step { flex-direction: column; gap: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <a href="#" class="nav-logo">DX<span>3270</span></a>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#gallery">Screenshots</a></li>
+    <li><a href="#setup">Setup</a></li>
+    <li><a href="#keyboard">Keyboard</a></li>
+    <li><a href="https://github.com/el-dockerr/X3270" target="_blank" rel="noopener">GitHub</a></li>
+    <li><a href="#download" class="nav-cta">Download</a></li>
+  </ul>
+</nav>
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="hero-badge">
+    <span class="dot"></span>
+    v1.6.0 — GDDM/GOCA vector graphics
+  </div>
+  <h1>DX3270<span class="cursor"></span></h1>
+  <p class="hero-sub">TN3270E Terminal Emulator for macOS</p>
+  <p class="hero-tagline">
+    Native Cocoa. CoreText rendering. Full TN3270E negotiation.<br />
+    Connect to IBM Mainframes — z/OS, z/VM, z/VSE — for free.
+  </p>
+  <div class="hero-pills">
+    <span class="pill green">Free &amp; Open Source</span>
+    <span class="pill">Apple Silicon</span>
+    <span class="pill">Intel</span>
+    <span class="pill">No Java</span>
+    <span class="pill">No X11</span>
+    <span class="pill">TLS 1.2+</span>
+    <span class="pill">ISPF / TSO</span>
+    <span class="pill">GDDM Graphics</span>
+  </div>
+  <div class="btn-group">
+    <a href="https://github.com/el-dockerr/X3270/releases/latest" class="btn btn-primary" target="_blank" rel="noopener">
+      <!-- Apple logo -->
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+      Download for Mac
+    </a>
+    <a href="https://github.com/el-dockerr/X3270" class="btn btn-secondary" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      View on GitHub
+    </a>
+  </div>
+  <div class="screenshot-wrap">
+    <img
+      src="https://raw.githubusercontent.com/el-dockerr/X3270/main/screenshots/screenshot.png"
+      alt="ISPF Primary Option Menu running inside DX3270"
+      loading="lazy"
+    />
+    <p class="screenshot-caption">ISPF 8.1 Primary Option Menu — connected to IBM ZExplore at 204.90.115.200:623</p>
+  </div>
+</section>
+
+<!-- ── WHY ── -->
+<section class="why">
+  <div class="container">
+    <div class="section-label">Why DX3270</div>
+    <h2 class="section-title">No Java.<br />No X11.<br />No license fee.</h2>
+    <p class="section-desc">
+      Every decent TN3270 client for macOS either costs $50–$100+, requires Java, or
+      hasn't been touched in a decade. DX3270 is none of those things.
+    </p>
+    <div class="why-grid">
+      <div class="why-card">
+        <div class="icon">🍎</div>
+        <h3>Truly Native</h3>
+        <p>Built on Cocoa, CoreText, and CoreGraphics. Renders like a Mac app because it <em>is</em> a Mac app. Apple Silicon and Intel binaries.</p>
+      </div>
+      <div class="why-card">
+        <div class="icon">🔒</div>
+        <h3>TLS Out of the Box</h3>
+        <p>OpenSSL powers implicit TLS (TLS 1.2+) on any port. Connect to z/OS, z/VM, and z/VSE — encrypted or plain Telnet.</p>
+      </div>
+      <div class="why-card">
+        <div class="icon">📊</div>
+        <h3>GDDM Vector Graphics</h3>
+        <p>Full GOCA order-stream decoder renders charts, diagrams, and topology maps as CoreGraphics overlays — no plugin needed.</p>
+      </div>
+      <div class="why-card">
+        <div class="icon">🆓</div>
+        <h3>Free Forever</h3>
+        <p>MIT license. Source on GitHub. No subscriptions, no dongles, no activation keys. Just a terminal emulator that works.</p>
+      </div>
+      <div class="why-card">
+        <div class="icon">⌨️</div>
+        <h3>Correct Protocol</h3>
+        <p>Full TN3270E negotiation, proper AID key codes per IBM GA23-0059, Query Reply with colour/highlight structured fields. ISPF just works.</p>
+      </div>
+      <div class="why-card">
+        <div class="icon">🖥️</div>
+        <h3>Five Screen Models</h3>
+        <p>Model 2–5 plus a non-standard 62×160 large model. Dynamic Usable Area Query Reply, 14-bit buffer addressing.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section id="features">
+  <div class="container">
+    <div class="section-label">Technical Details</div>
+    <h2 class="section-title">Every feature you need,<br />nothing you don't.</h2>
+    <table class="features-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Protocol</td><td>TN3270E (RFC 2355) with automatic fallback to classic TN3270</td></tr>
+        <tr><td>Security</td><td>Plain Telnet <strong>and</strong> implicit TLS (TLS 1.2+) on any port via OpenSSL</td></tr>
+        <tr><td>Screen Models</td><td>Model 2 (24×80) · Model 3 (32×80) · Model 4 (43×80) · Model 5 (27×132) · Large (62×160)</td></tr>
+        <tr><td>EBCDIC</td><td>CP037 (US), CP500 (International), CP1047 (Open Systems)</td></tr>
+        <tr><td>Colours</td><td>IBM 3279 seven-colour palette, extended attributes (SA/SFE), per-cell background fill, reverse video, underscore</td></tr>
+        <tr><td>GDDM/GOCA</td><td>FILRECT · FULLARC · CGPOS/CLCS · SCOL · SMIX · BSEG/ESEG · LNPOS/LNAT — CoreGraphics vector overlay</td></tr>
+        <tr><td>Keyboard</td><td>PF1–PF24, PA1–PA3, Clear, Reset, Tab/BackTab, ErEOF, Insert, arrows — correct IBM AID codes</td></tr>
+        <tr><td>Font</td><td>Menlo (default) or bundled IBM 3270 font by Ricardo Bánffy (SIL OFL). Switchable live in Preferences.</td></tr>
+        <tr><td>Query Reply</td><td>Read Partition Query with Colour, Highlighting, and GOCA Data Streams structured fields</td></tr>
+        <tr><td>Export</td><td>Save Screenshot as PNG (⌘⇧P) · Export Screen as UTF-8 Text (⌘⇧T)</td></tr>
+        <tr><td>Diagnostics</td><td>Traffic Monitor — live hex/ASCII dump of all Telnet bytes (⌘⇧D)</td></tr>
+        <tr><td>Connection History</td><td>Last 20 hosts stored in NSUserDefaults; selects port, TLS, CA bundle, code page automatically</td></tr>
+        <tr><td>macOS</td><td>12 Monterey and later · Apple Silicon (ARM64) + Intel (x86_64)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── GALLERY ── -->
+<section class="gallery" id="gallery">
+  <div class="container">
+    <div class="section-label">Screenshots</div>
+    <h2 class="section-title">See it in action</h2>
+    <div class="gallery-grid">
+      <figure class="gallery-item">
+        <img src="https://raw.githubusercontent.com/el-dockerr/X3270/main/screenshots/screenshot.png" alt="ISPF Primary Option Menu" loading="lazy" />
+        <figcaption>ISPF 8.1 Primary Option Menu on z/OS</figcaption>
+      </figure>
+      <figure class="gallery-item">
+        <img src="https://raw.githubusercontent.com/el-dockerr/X3270/main/screenshots/Screenshot_GDDM_1.png" alt="GOCA bar chart — monthly CPU utilisation" loading="lazy" />
+        <figcaption>GOCA view — Monthly CPU Utilisation bar chart</figcaption>
+      </figure>
+      <figure class="gallery-item">
+        <img src="https://raw.githubusercontent.com/el-dockerr/X3270/main/screenshots/Screenshot_GDDM_2.png" alt="GOCA scatter plot — throughput vs response time" loading="lazy" />
+        <figcaption>GOCA view — Throughput vs Response Time scatter plot</figcaption>
+      </figure>
+      <figure class="gallery-item">
+        <img src="https://raw.githubusercontent.com/el-dockerr/X3270/main/screenshots/Screenshot_IBM_FONT.png" alt="TSO/E Logon with IBM 3270 font" loading="lazy" />
+        <figcaption>TSO/E Logon — IBM 3270 font &amp; Preferences panel</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ── DOWNLOAD ── -->
+<section id="download">
+  <div class="container">
+    <div class="section-label">Download</div>
+    <h2 class="section-title">Pick your architecture.</h2>
+    <p class="section-desc">Pre-built DMGs are published automatically on every push to <code>main</code> via GitHub Actions.</p>
+
+    <div class="download-grid">
+      <div class="download-card featured">
+        <div class="arch">Apple Silicon · ARM64</div>
+        <h3>DX3270 for M-series Macs</h3>
+        <p>M1, M2, M3, M4 and later. Native ARM64 binary — instant launch, no Rosetta.</p>
+        <a href="https://github.com/el-dockerr/X3270/releases/latest" class="btn btn-primary" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 16l-5-5 1.4-1.4 2.6 2.6V4h2v8.2l2.6-2.6L17 11zm-6 2h12v2H6z"/></svg>
+          Download DMG
+        </a>
+      </div>
+      <div class="download-card">
+        <div class="arch">Intel · x86_64</div>
+        <h3>DX3270 for Intel Macs</h3>
+        <p>2019 Macs and earlier. Cross-compiled from Apple Silicon using Clang's native x86_64 support.</p>
+        <a href="https://github.com/el-dockerr/X3270/releases/latest" class="btn btn-secondary" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 16l-5-5 1.4-1.4 2.6 2.6V4h2v8.2l2.6-2.6L17 11zm-6 2h12v2H6z"/></svg>
+          Download DMG (Intel)
+        </a>
+      </div>
+    </div>
+
+    <div class="gatekeeper">
+      <span class="warn-icon">⚠</span>
+      <div>
+        <strong>First launch — macOS Gatekeeper</strong>
+        <p>DX3270 is currently unsigned. After dragging to <code>/Applications</code>, open <strong>System Settings → Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>. Or run once in Terminal:</p>
+        <pre><code>sudo xattr -r -d com.apple.quarantine /Applications/DX3270.app</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SETUP ── -->
+<section id="setup" style="background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+  <div class="container">
+    <div class="section-label">Getting Started</div>
+    <h2 class="section-title">Connect in 60 seconds.</h2>
+    <div class="setup-steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-body">
+          <h4>Download &amp; Install</h4>
+          <p>Download the DMG for your Mac architecture. Open it and drag <strong>DX3270.app</strong> to <code>/Applications</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-body">
+          <h4>Bypass Gatekeeper (first time only)</h4>
+          <p>macOS will block an unsigned app. Go to <strong>System Settings → Privacy &amp; Security → Open Anyway</strong>, or run the <code>xattr</code> command above.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-body">
+          <h4>Open the Connect dialog</h4>
+          <p>The Connect dialog opens automatically on launch. Enter your mainframe host, port, and choose TLS if needed. IBM ZExplore is available free at <code>204.90.115.200:623</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">04</div>
+        <div class="step-body">
+          <h4>Start typing on the green screen</h4>
+          <p>ISPF and TSO sessions work out of the box. PF keys, tab navigation, and multi-colour attributes all behave exactly as expected.</p>
+        </div>
+      </div>
+    </div>
+
+    <br /><br />
+    <div class="section-label">Build from Source</div>
+    <h3 style="font-size:1.2rem; color:var(--white); margin-bottom:1rem;">Prerequisites: Xcode CLT · Homebrew · OpenSSL · CMake</h3>
+    <pre><code><span class="comment"># Install dependencies</span>
+xcode-select --install
+brew install openssl@3 cmake
+
+<span class="comment"># Clone and build (Apple Silicon)</span>
+git clone https://github.com/el-dockerr/X3270.git
+cd X3270
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+open build/DX3270.app</code></pre>
+  </div>
+</section>
+
+<!-- ── KEYBOARD ── -->
+<section id="keyboard">
+  <div class="container">
+    <div class="section-label">Keyboard Reference</div>
+    <h2 class="section-title">Every key, mapped.</h2>
+    <div class="keymap-grid">
+      <div class="keymap-group">
+        <h4>Function Keys</h4>
+        <table class="keymap-table">
+          <tr><td><kbd>F1</kbd>–<kbd>F12</kbd></td><td>PF1–PF12</td></tr>
+          <tr><td><kbd>⇧F1</kbd>–<kbd>⇧F12</kbd></td><td>PF13–PF24</td></tr>
+          <tr><td><kbd>⌥1</kbd> / <kbd>⌥2</kbd> / <kbd>⌥3</kbd></td><td>PA1 / PA2 / PA3</td></tr>
+          <tr><td><kbd>Return</kbd></td><td>Enter (AID)</td></tr>
+          <tr><td><kbd>Escape</kbd></td><td>Reset (unlock keyboard)</td></tr>
+          <tr><td><kbd>⌥Escape</kbd></td><td>Clear screen</td></tr>
+        </table>
+      </div>
+      <div class="keymap-group">
+        <h4>Navigation &amp; Editing</h4>
+        <table class="keymap-table">
+          <tr><td><kbd>Tab</kbd> / <kbd>⇧Tab</kbd></td><td>Next / previous field</td></tr>
+          <tr><td><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></td><td>Cursor movement</td></tr>
+          <tr><td><kbd>Insert</kbd></td><td>Toggle insert mode</td></tr>
+          <tr><td><kbd>⌥Delete</kbd></td><td>Erase to End of Field</td></tr>
+          <tr><td><kbd>⌥E</kbd></td><td>Erase Input (all unprotected)</td></tr>
+        </table>
+      </div>
+      <div class="keymap-group">
+        <h4>Application Shortcuts</h4>
+        <table class="keymap-table">
+          <tr><td><kbd>⌘N</kbd></td><td>New Connection</td></tr>
+          <tr><td><kbd>⌘,</kbd></td><td>Preferences</td></tr>
+          <tr><td><kbd>⌘⇧P</kbd></td><td>Save Screenshot</td></tr>
+          <tr><td><kbd>⌘⇧T</kbd></td><td>Export Screen as Text</td></tr>
+          <tr><td><kbd>⌘⇧D</kbd></td><td>Traffic Monitor</td></tr>
+          <tr><td><kbd>⌘/</kbd></td><td>Keyboard Shortcuts window</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SUPPORT ── -->
+<section style="padding-top: 0;">
+  <div class="container">
+    <div class="support-banner">
+      <h3>Like DX3270? Support the project ♥</h3>
+      <p>DX3270 is free and always will be. If it saves you a mainframe terminal license fee, consider buying the author a coffee.</p>
+      <a href="https://buy.stripe.com/7sY9AT3VMfKi53942m3VC05" class="btn btn-primary" target="_blank" rel="noopener">
+        ♥ &nbsp;Support this project
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="footer-links">
+    <a href="https://github.com/el-dockerr/X3270" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/el-dockerr/X3270/releases" target="_blank" rel="noopener">Releases</a>
+    <a href="https://github.com/el-dockerr/X3270/issues" target="_blank" rel="noopener">Issues</a>
+    <a href="https://github.com/el-dockerr/X3270/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+    <a href="https://buy.stripe.com/7sY9AT3VMfKi53942m3VC05" target="_blank" rel="noopener">Donate</a>
+  </div>
+  <p>DX3270 v1.6.0 · Written by Swen Kalski · MIT License</p>
+  <p style="margin-top:0.4rem;">IBM, z/OS, ISPF, and 3270 are trademarks of IBM Corporation. Not affiliated with or endorsed by IBM.</p>
+  <p style="margin-top:0.4rem;">IBM 3270 font by <a href="https://github.com/rbanffy/3270font" target="_blank" rel="noopener">Ricardo Bánffy</a>, SIL Open Font License 1.1.</p>
+</footer>
+
+</body>
+</html>
