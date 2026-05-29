@@ -5,6 +5,7 @@
 #include "DataStreamParser.h"
 #include "KeyboardState.h"
 #include "ScreenBuffer.h"
+#include "GraphicsBuffer.h"
 #include "EbcdicCodec.h"
 #include <memory>
 #include <thread>
@@ -15,11 +16,12 @@
     DebugWindowController *_debugWC;
 
     // Core engine objects (heap-allocated because they have no default ctor)
-    std::unique_ptr<x3270::ScreenBuffer>   _screen;
-    std::unique_ptr<x3270::EbcdicCodec>    _codec;
-    std::unique_ptr<x3270::DataStreamParser> _parser;
-    std::unique_ptr<x3270::KeyboardState>  _kbd;
-    std::unique_ptr<x3270::TN3270Session>  _session;
+    std::unique_ptr<x3270::ScreenBuffer>      _screen;
+    std::unique_ptr<x3270::GraphicsBuffer>    _graphics;
+    std::unique_ptr<x3270::EbcdicCodec>       _codec;
+    std::unique_ptr<x3270::DataStreamParser>  _parser;
+    std::unique_ptr<x3270::KeyboardState>     _kbd;
+    std::unique_ptr<x3270::TN3270Session>     _session;
 
     std::thread _networkThread;
 
@@ -72,14 +74,24 @@
 
 // ── Engine ────────────────────────────────────────────────────────────────────
 - (void)buildEngineObjects {
-    _screen  = std::make_unique<x3270::ScreenBuffer>(_model);
-    _codec   = std::make_unique<x3270::EbcdicCodec>(_codePage);
-    _parser  = std::make_unique<x3270::DataStreamParser>(*_screen, *_codec);
-    _kbd     = std::make_unique<x3270::KeyboardState>(*_screen, *_codec);
-    _session = std::make_unique<x3270::TN3270Session>();
+    _screen   = std::make_unique<x3270::ScreenBuffer>(_model);
+    _graphics = std::make_unique<x3270::GraphicsBuffer>();
+    _codec    = std::make_unique<x3270::EbcdicCodec>(_codePage);
+    _parser   = std::make_unique<x3270::DataStreamParser>(*_screen, *_codec);
+    _parser->setGraphicsBuffer(*_graphics);
+    _kbd      = std::make_unique<x3270::KeyboardState>(*_screen, *_codec);
+    _session  = std::make_unique<x3270::TN3270Session>();
     _session->setModel(_model);
 
     __weak TerminalWindowController *weakSelf = self;
+
+    // Graphics update callback: fired by DataStreamParser after a GOCA WSF batch.
+    _parser->setGraphicsUpdateCallback([weakSelf]() {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) s = weakSelf;
+            if (s) [s->_termView graphicsDidUpdate];
+        });
+    });
 
     // Parser → unlock keyboard on WCC unlock bit
     _parser->setUnlockCallback([weakSelf]() {
@@ -172,6 +184,7 @@
     _termView = [[TerminalView alloc] initWithFrame:self.window.contentView.bounds];
     _termView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [_termView setScreenBuffer:_screen.get() keyboardState:_kbd.get()];
+    [_termView setGraphicsBuffer:_graphics.get()];
 
     [self.window.contentView addSubview:_termView];
     [self.window makeFirstResponder:_termView];

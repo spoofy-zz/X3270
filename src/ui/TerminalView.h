@@ -2,6 +2,7 @@
 #import <AppKit/AppKit.h>
 #include "ScreenBuffer.h"
 #include "KeyboardState.h"
+#include "GraphicsBuffer.h"
 
 /// NSUserDefaults key – BOOL; YES = use bundled IBM 3270 font (by Ricardo Bánffy)
 extern NSString * const kPref3270FontEnabled;
@@ -15,8 +16,14 @@ extern NSString * const kPref3270FontEnabled;
 - (void)setScreenBuffer:(x3270::ScreenBuffer*)screen
           keyboardState:(x3270::KeyboardState*)kbd;
 
+/// Wire up the GOCA graphics buffer (call after setScreenBuffer:).
+- (void)setGraphicsBuffer:(x3270::GraphicsBuffer*)graphics;
+
 /// Call this (on main thread) whenever the screen buffer has changed.
 - (void)screenDidUpdate;
+
+/// Call this (on main thread) whenever the graphics buffer has changed.
+- (void)graphicsDidUpdate;
 
 /// Preferred window content size for the attached screen buffer's model + OIA
 - (NSSize)preferredSize;

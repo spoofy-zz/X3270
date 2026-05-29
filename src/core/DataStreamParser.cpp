@@ -239,29 +239,92 @@ void DataStreamParser::handleDataByte(uint8_t b) {
     }
 }
 
+// ── setGraphicsBuffer ─────────────────────────────────────────────────────────
+void DataStreamParser::setGraphicsBuffer(GraphicsBuffer& buf) {
+    graphics_   = &buf;
+    gocaParser_ = std::make_unique<GocaParser>(buf, codec_);
+}
+
 // ── Write Structured Field ────────────────────────────────────────────────────
 // Parse each SF in the record.  Respond to Read Partition Query with a minimal
-// IBM-3278-2 Query Reply so ISPF can identify the terminal and paint its menu.
+// Query Reply so ISPF/GDDM can identify the terminal and paint its screens.
+//
+// GOCA-bearing SF types (confirmed by traffic captures; update as needed):
+//   0x01 — Read Partition (Query / QueryList)
+//   0x0D — Begin/End of Graphics — signals a GOCA frame boundary
+//   0x0E — Write Graphics Object (GOCA) — payload is a GOCA order stream
+//   0x0F — Erase Graphics — discard the current graphics frame
+//
+// NOTE: The exact SF type bytes for GOCA records are implementation-defined by
+// the host application (typically GDDM on VM/CMS).  The values above match the
+// common GDDM-generated structured fields observed in typical TN3270E captures.
+// Verify against Debug Window captures and adjust if the host uses different codes.
 void DataStreamParser::handleWSF(const std::vector<uint8_t>& record) {
+    bool graphicsUpdated = false;
+
     size_t i = 1; // skip WSF command byte
     while (i + 2 < record.size()) {
         // Each SF: [length_hi][length_lo][type][data...]
-        // Length field includes itself (min 3 bytes)
+        // Length field includes itself (min 3 bytes).
         uint16_t sfLen = (static_cast<uint16_t>(record[i]) << 8) | record[i + 1];
         if (sfLen < 3 || i + sfLen > record.size()) break;
 
         uint8_t sfType = record[i + 2];
 
-        if (sfType == 0x01 && sfLen >= 5) {
-            // Read Partition: [partition_id (1 byte)][query_type (1 byte)]
-            // uint8_t partition = record[i + 3]; // 0xFF = all
-            uint8_t queryType = record[i + 4];
-            // 0x02 = Query, 0x03 = QueryList — both require a Query Reply
-            if ((queryType == 0x02 || queryType == 0x03) && sendCb_) {
-                sendCb_(buildQueryReply());
+        // Pointer to the SF data payload (after the 3-byte header).
+        const uint8_t* payload     = record.data() + i + 3;
+        size_t         payloadSize = (sfLen >= 3) ? (sfLen - 3) : 0;
+
+        switch (sfType) {
+
+        case 0x01:
+            // ── Read Partition (Query / QueryList) ────────────────────────────
+            if (sfLen >= 5) {
+                uint8_t queryType = record[i + 4]; // [partition_id][query_type]
+                if ((queryType == 0x02 || queryType == 0x03) && sendCb_) {
+                    sendCb_(buildQueryReply());
+                }
             }
+            break;
+
+        case 0x0D:
+            // ── Begin/End of Graphics ─────────────────────────────────────────
+            // Signals the start of a new GOCA frame.  Reset parser state so
+            // stale drawing commands from a previous frame are not re-applied.
+            if (graphics_ && gocaParser_) {
+                graphics_->clear();
+                gocaParser_->reset();
+            }
+            break;
+
+        case 0x0E:
+            // ── Write Graphics Object (GOCA order stream) ─────────────────────
+            if (graphics_ && gocaParser_ && payloadSize > 0) {
+                gocaParser_->parseOrders(payload, payloadSize);
+                graphicsUpdated = true;
+            }
+            break;
+
+        case 0x0F:
+            // ── Erase Graphics ────────────────────────────────────────────────
+            if (graphics_ && gocaParser_) {
+                graphics_->clear();
+                gocaParser_->reset();
+                graphicsUpdated = true;
+            }
+            break;
+
+        default:
+            // Unknown SF type — safely skip using sfLen.
+            break;
         }
+
         i += sfLen;
+    }
+
+    if (graphicsUpdated && graphics_) {
+        graphics_->markDirty();          // fires the update callback wired in Phase 6
+        if (graphicsUpdateCb_) graphicsUpdateCb_();
     }
 }
 
@@ -283,11 +346,12 @@ std::vector<uint8_t> DataStreamParser::buildQueryReply() const {
     // ── Query Reply (Summary) — 0x81 ────────────────────────────────────────
     // MUST list every QR type present in this response (including itself).
     // Length = 2 (len field) + 1 (type) + N listed codes.
-    // Types listed: Usable Area=0x80, Summary=0x81, Color=0x86, Highlight=0x87
-    r.push_back(0x00); r.push_back(0x07); // length = 7
+    // Types listed: Usable Area=0x80, Summary=0x81, Data Streams=0x84, Color=0x86, Highlight=0x87
+    r.push_back(0x00); r.push_back(0x08); // length = 8
     r.push_back(0x81);                    // type: Summary
     r.push_back(0x80);                    // Usable Area
     r.push_back(0x81);                    // Summary itself
+    r.push_back(0x84);                    // Data Streams (GOCA)
     r.push_back(0x86);                    // Color
     r.push_back(0x87);                    // Highlighting
 
@@ -338,6 +402,16 @@ std::vector<uint8_t> DataStreamParser::buildQueryReply() const {
     r.push_back(0xF2); r.push_back(0xF2); // reverse    → reverse video
     r.push_back(0xF4); r.push_back(0xF4); // underscore → underscore
     r.push_back(0xF8); r.push_back(0xF8); // intensify  → intensify
+
+    // ── Query Reply (Data Streams) — 0x84 ───────────────────────────────────
+    // Advertises GOCA (Graphics Object Content Architecture) support.
+    // Format: flags(1) + Np(1) + Np×stream-type(1)
+    // Length = 2 (len field) + 1 (type) + 1 (flags) + 1 (Np) + 1 (GOCA code) = 6
+    r.push_back(0x00); r.push_back(0x06); // length = 6
+    r.push_back(0x84);                    // type: Data Streams
+    r.push_back(0x00);                    // flags (reserved)
+    r.push_back(0x01);                    // Np = 1 supported stream type
+    r.push_back(0x02);                    // stream type 0x02 = GOCA
 
     return r;
 }

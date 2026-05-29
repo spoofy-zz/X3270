@@ -28,6 +28,24 @@ If you work in Mainframe and you're tired of paying for the privilege, this is f
 
 ---
 
+## GDDM / GOCA Graphics
+
+Version 1.6.0 adds full support for **GDDM vector graphics** sent by applications running on VM/CMS or z/OS. Charts, diagrams and topology maps are rendered as a CoreGraphics overlay on top of the text screen — no plugin, no browser, no Java.
+
+![GOCA bar chart — monthly CPU utilisation](screenshots/Screenshot_GDDM_1.png)
+
+*GOCA View 1/4 — Monthly CPU Utilisation (%). Vertical bars coloured by threshold: green < 60 %, yellow 60–79 %, red ≥ 80 %. Axes, tick marks and value labels all rendered as GOCA vector objects.*
+
+![GOCA scatter plot — throughput vs response time](screenshots/Screenshot_GDDM_2.png)
+
+*GOCA View 3/4 — Throughput vs Response Time scatter plot. Coloured FULLARC dots, blue FILRECT grid lines, and a red trend line. All 25 data points decoded from a single GOCA Write Graphics Object structured field.*
+
+Supported GOCA orders: `FILRECT` · `FULLARC` · `CGPOS` / `CLCS` · `SCOL` · `SMIX` · `BSEG` / `ESEG` · `LNPOS` / `LNAT`.  
+Coordinate space: AW = 9, AH = 12 GOCA units per character cell; Y = 0 at the top-left of the text area, increasing downward (flipped for Cocoa internally).  
+IBM 3279 palette colours (0xF1–0xF7) map to the same CoreGraphics colours used for text attributes.
+
+---
+
 ## IBM 3270 Font
 
 DX3270 ships with the authentic **IBM 3270 terminal font** by [Ricardo Bánffy](https://github.com/rbanffy/3270font), bundled directly in the app. It is off by default so the familiar Menlo monospace is used out of the box.
@@ -56,8 +74,9 @@ The setting is saved and restored on every launch.
 | **EBCDIC code pages** | CP037 (US), CP500 (International), CP1047 (Open Systems) |
 | **UI** | Native Cocoa window, green-on-black phosphor, 600 ms cursor blink |
 | **Keyboard** | PF1–PF24, PA1–PA3, Clear, Reset, Tab/BackTab, ErEOF, Insert, arrows |
-| **Query Reply** | Responds to IBM Structured Field Read Partition Query (required for ISPF) |
-| **Rendering** | CoreText glyph metrics for pixel-perfect character grid |
+| **Query Reply** | Responds to IBM Structured Field Read Partition Query (required for ISPF); advertises GOCA graphics capability |
+| **GDDM / GOCA graphics** | Full GOCA order-stream decoder: filled rectangles, full arcs (circles), absolute and relative line sequences, character strings at absolute position, set-colour, set-mix, and segment boundaries. Rendered as a CoreGraphics vector overlay on top of the text layer. Coordinate space AW=9/AH=12 units per cell, Y-flipped for Cocoa. IBM 3279 palette (0xF1–0xF7) colours. See [GDDM / GOCA Graphics](#gddm--goca-graphics). |
+| **Rendering** | CoreText glyph metrics for pixel-perfect character grid; CoreGraphics vector overlay for GOCA graphics |
 | **App icon** | Native macOS squircle icon — white gradient, bold DX3270 lettering with green terminal cursor, bundled as `AppIcon.icns` |
 | **Shortcuts reference** | Built-in keyboard shortcuts window — DX3270 → Keyboard Shortcuts… (`⌘/`) |
 | **Screenshot** | Save the terminal screen as a PNG image (File → Save Screenshot… `⌘⇧P`) |
@@ -223,6 +242,24 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 ---
 
 ## Version History
+
+### v1.6.0 — 2026-05-29
+
+**GDDM / GOCA graphics support**
+
+- **GOCA Query Reply** — The Structured Field Query Reply now advertises Data Streams support (type `0x84`, stream `0x02` = GOCA), causing GDDM on VM/CMS to send vector-graphics structured fields instead of falling back to text-only mode.
+
+- **GraphicsBuffer** — A new `GraphicsBuffer` data model accumulates decoded GOCA drawing commands (`GocaMoveTo`, `GocaLineTo`, `GocaArc`, `GocaFilledRect`, `GocaSetColor`, `GocaSetMix`, `GocaCharString`, `GocaBeginSegment`) as a typed C++17 `std::variant` list, using the same dirty-flag/callback pattern as `ScreenBuffer`.
+
+- **GocaParser** — A new stateful FSM (`GocaParser`) decodes the GOCA order byte stream inside Write Graphics Object structured fields. Supported orders: `SPOS` (set position), `LNPOS` / `LNAT` (line to absolute / relative), `FULLARC` (circle), `FILRECT` (filled rectangle), `SCOL` (set colour), `SMIX` (set mix/blend mode), `CGPOS` / `CLCS` (character strings at given / current position), `BSEG` / `ESEG` (segment boundaries). All unrecognised orders are safely skipped using the GOCA implied/explicit length table.
+
+- **DataStreamParser WSF routing** — `handleWSF()` now routes GOCA-bearing structured fields: SF type `0x0D` (Begin/Reset graphics) resets the parser; `0x0E` (Write Graphics Object) feeds the GOCA payload to `GocaParser`; `0x0F` (Erase Graphics) clears the buffer.
+
+- **CoreGraphics overlay in TerminalView** — A new `drawGraphicsOverlay:` pass renders the `GraphicsBuffer` command list via Core Graphics after the text layer and before the OIA bar. GOCA coordinates (in device units matching the Usable Area QR cell dimensions `AW=9`, `AH=12`) are mapped to Cocoa pixel coordinates with Y-flip. IBM 3279 palette colours reuse the existing `colorFor3270Code()` function. EBCDIC character strings are decoded via `EbcdicCodec` and rendered with the current terminal font. Mix mode `0x04` (XOR) maps to `kCGBlendModeXOR`.
+
+- **No PC3270G/GX extensions** — IBM PC3270 Graphics Adapter proprietary extensions are out of scope for this release.
+
+---
 
 ### v1.5.0 — 2026-05-28
 
