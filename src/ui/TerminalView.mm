@@ -2,6 +2,7 @@
 #import <CoreText/CoreText.h>
 #import <CoreGraphics/CoreGraphics.h>
 #include "EbcdicCodec.h"
+#include "GraphicsBuffer.h"
 #include <string>
 
 /// NSUserDefaults key – BOOL; YES = use bundled IBM 3270 font
@@ -52,9 +53,10 @@ static NSColor *colorFor3270Code(uint8_t code) {
 }
 
 @implementation TerminalView {
-    x3270::ScreenBuffer*  _screen;
-    x3270::KeyboardState* _kbd;
-    x3270::EbcdicCodec    _codec;
+    x3270::ScreenBuffer*    _screen;
+    x3270::KeyboardState*   _kbd;
+    x3270::GraphicsBuffer*  _graphics;   // GOCA drawing command list (may be nil)
+    x3270::EbcdicCodec      _codec;
 
     NSTimer* _cursorTimer;
     BOOL     _cursorVisible;
@@ -163,7 +165,17 @@ static NSColor *colorFor3270Code(uint8_t code) {
     }
 }
 
+- (void)setGraphicsBuffer:(x3270::GraphicsBuffer*)graphics {
+    _graphics = graphics;
+}
+
 - (void)screenDidUpdate {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self setNeedsDisplay:YES];
+    });
+}
+
+- (void)graphicsDidUpdate {
     dispatch_async(dispatch_get_main_queue(), ^{
         [self setNeedsDisplay:YES];
     });
@@ -284,6 +296,154 @@ static NSColor *colorFor3270Code(uint8_t code) {
 
     // Draw OIA (status bar)
     [self drawOIA];
+
+    // Draw GOCA graphics overlay (on top of text, below OIA)
+    if (_graphics && !_graphics->commands().empty()) {
+        CGContextRef cgctx = [[NSGraphicsContext currentContext] CGContext];
+        [self drawGraphicsOverlay:cgctx];
+        _graphics->clearDirty();
+    }
+}
+
+// ── GOCA Graphics Overlay ─────────────────────────────────────────────────────
+// Coordinate mapping:
+//   GOCA device units are defined by the AW/AH values in the Usable Area Query
+//   Reply: 1 x-unit = 1/9 of a character cell width, 1 y-unit = 1/12 of height.
+//   The GOCA origin (0,0) is the top-left of the character area (not the OIA).
+//   Cocoa Y-origin is bottom-left, so we flip Y relative to the text area height.
+//
+// Pixel from GOCA unit:
+//   px = goca_x * (_charW / kGocaCellW)
+//   py = (_rows * _charH) - goca_y * (_charH / kGocaCellH)   (Cocoa coords)
+//
+// The OIA rows are below the text area in Cocoa Y, so no offset is needed here
+// because TerminalView reserves (kOIARows * _charH) at the very bottom and text
+// rows start at y = kOIARows * _charH.  The overall view height is:
+//   (_rows + kOIARows) * _charH
+// Text area top (in Cocoa) = view height,  text area bottom = kOIARows * _charH.
+
+static constexpr CGFloat kGocaCellW = 9.0;  // must match AW in buildQueryReply()
+static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply()
+
+- (void)drawGraphicsOverlay:(CGContextRef)ctx {
+    const CGFloat textAreaH = _rows * _charH;
+    const CGFloat textAreaY = kOIARows * _charH; // Cocoa Y of text-area bottom edge
+    const CGFloat scaleX    = _charW / kGocaCellW;
+    const CGFloat scaleY    = _charH / kGocaCellH;
+
+    // Helper lambda (C++ block) — GOCA (x,y) → Cocoa point.
+    auto toPoint = [&](int16_t gx, int16_t gy) -> CGPoint {
+        CGFloat px = gx * scaleX;
+        CGFloat py = textAreaY + textAreaH - gy * scaleY; // flip Y
+        return CGPointMake(px, py);
+    };
+
+    // Current CG stroke/fill colour (defaults to green = 0xF4).
+    NSColor *currentNSColor = _foregroundColor;
+    auto applyColor = [&](uint8_t code) {
+        NSColor *c = (code != 0x00) ? colorFor3270Code(code) : _foregroundColor;
+        if (!c) c = _foregroundColor;
+        currentNSColor = c;
+        CGFloat r, g, b, a;
+        [c getRed:&r green:&g blue:&b alpha:&a];
+        CGContextSetRGBStrokeColor(ctx, r, g, b, a);
+        CGContextSetRGBFillColor(ctx,   r, g, b, a);
+    };
+
+    CGContextSetLineWidth(ctx, 1.0);
+    applyColor(0x00); // set default colour
+
+    // Accumulated line path start point (for LineTo sequences).
+    CGPoint lineStart = CGPointZero;
+    bool    inLinePath = false;
+
+    for (const x3270::GocaCommand& cmd : _graphics->commands()) {
+
+        if (std::holds_alternative<x3270::GocaSetColor>(cmd)) {
+            auto& c = std::get<x3270::GocaSetColor>(cmd);
+            applyColor(c.index);
+            inLinePath = false;
+        }
+
+        else if (std::holds_alternative<x3270::GocaSetMix>(cmd)) {
+            auto& m = std::get<x3270::GocaSetMix>(cmd);
+            // 0x04 = XOR (exclusive-or); anything else = normal overpaint.
+            CGContextSetBlendMode(ctx, (m.mode == 0x04) ? kCGBlendModeXOR : kCGBlendModeNormal);
+        }
+
+        else if (std::holds_alternative<x3270::GocaMoveTo>(cmd)) {
+            auto& mv = std::get<x3270::GocaMoveTo>(cmd);
+            lineStart   = toPoint(mv.x, mv.y);
+            inLinePath  = false;
+        }
+
+        else if (std::holds_alternative<x3270::GocaLineTo>(cmd)) {
+            auto& ln = std::get<x3270::GocaLineTo>(cmd);
+            if (ln.pts.empty()) break;
+
+            CGContextBeginPath(ctx);
+            CGContextMoveToPoint(ctx, lineStart.x, lineStart.y);
+
+            CGPoint last = lineStart;
+            for (auto& [gx, gy] : ln.pts) {
+                CGPoint dest;
+                if (ln.absolute) {
+                    dest = toPoint(gx, gy);
+                } else {
+                    dest = CGPointMake(last.x + gx * scaleX,
+                                       last.y - gy * scaleY); // relative, Y already flipped
+                }
+                CGContextAddLineToPoint(ctx, dest.x, dest.y);
+                last = dest;
+            }
+            CGContextStrokePath(ctx);
+            lineStart  = last;
+            inLinePath = false;
+        }
+
+        else if (std::holds_alternative<x3270::GocaArc>(cmd)) {
+            auto& arc = std::get<x3270::GocaArc>(cmd);
+            CGPoint center = toPoint(arc.cx, arc.cy);
+            CGFloat radius = arc.radius * scaleX; // use X scale; assume uniform
+            CGContextBeginPath(ctx);
+            CGContextAddArc(ctx, center.x, center.y, radius,
+                            0, static_cast<CGFloat>(2 * M_PI), 0);
+            CGContextStrokePath(ctx);
+            inLinePath = false;
+        }
+
+        else if (std::holds_alternative<x3270::GocaFilledRect>(cmd)) {
+            auto& fr = std::get<x3270::GocaFilledRect>(cmd);
+            CGPoint p1 = toPoint(fr.x1, fr.y1);
+            CGPoint p2 = toPoint(fr.x2, fr.y2);
+            CGFloat rx = std::min(p1.x, p2.x);
+            CGFloat ry = std::min(p1.y, p2.y);
+            CGFloat rw = std::abs(p2.x - p1.x);
+            CGFloat rh = std::abs(p2.y - p1.y);
+            CGContextFillRect(ctx, CGRectMake(rx, ry, rw, rh));
+            inLinePath = false;
+        }
+
+        else if (std::holds_alternative<x3270::GocaCharString>(cmd)) {
+            auto& cs = std::get<x3270::GocaCharString>(cmd);
+            CGPoint pt = toPoint(cs.x, cs.y);
+            NSString *str = [NSString stringWithUTF8String:cs.text.c_str()];
+            if (str.length > 0) {
+                CGFloat r, g, b, a;
+                [currentNSColor getRed:&r green:&g blue:&b alpha:&a];
+                NSDictionary *attrs = @{
+                    NSFontAttributeName:            _terminalFont,
+                    NSForegroundColorAttributeName: currentNSColor,
+                };
+                [str drawAtPoint:NSMakePoint(pt.x, pt.y) withAttributes:attrs];
+            }
+            inLinePath = false;
+        }
+
+        // GocaBeginSegment / GocaEndSegment — no rendering action, metadata only.
+    }
+
+    (void)inLinePath; // suppress unused-variable warning
 }
 
 - (void)drawOIA {
@@ -336,7 +496,7 @@ static NSColor *colorFor3270Code(uint8_t code) {
     static dispatch_once_t vOnce;
     dispatch_once(&vOnce, ^{
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.5.0";
+        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.6.0";
         NSString *b = info[@"CFBundleVersion"] ?: @"1";
         versionStr = [NSString stringWithFormat:@"DX3270 v%@ build %@  \u2014  \u00a9 2026 Swen Skalski", v, b];
     });

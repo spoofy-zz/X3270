@@ -1,7 +1,10 @@
 #pragma once
 #include "ScreenBuffer.h"
 #include "EbcdicCodec.h"
+#include "GraphicsBuffer.h"
+#include "GocaParser.h"
 #include <cstdint>
+#include <memory>
 #include <vector>
 #include <functional>
 
@@ -45,15 +48,21 @@ static constexpr uint8_t WCC_RESET_MDT   = 0x01; // bit 7: reset all MDT
 
 class DataStreamParser {
 public:
-    using AlarmCallback    = std::function<void()>;
-    using UnlockCallback   = std::function<void()>;
-    using SendCallback     = std::function<void(const std::vector<uint8_t>&)>;
+    using AlarmCallback          = std::function<void()>;
+    using UnlockCallback        = std::function<void()>;
+    using SendCallback          = std::function<void(const std::vector<uint8_t>&)>;
+    using GraphicsUpdateCallback= std::function<void()>;
 
     DataStreamParser(ScreenBuffer& screen, EbcdicCodec& codec);
 
-    void setAlarmCallback(AlarmCallback cb)  { alarmCb_  = std::move(cb); }
-    void setUnlockCallback(UnlockCallback cb){ unlockCb_ = std::move(cb); }
-    void setSendCallback(SendCallback cb)    { sendCb_   = std::move(cb); }
+    void setAlarmCallback(AlarmCallback cb)              { alarmCb_          = std::move(cb); }
+    void setUnlockCallback(UnlockCallback cb)            { unlockCb_         = std::move(cb); }
+    void setSendCallback(SendCallback cb)                { sendCb_           = std::move(cb); }
+    void setGraphicsUpdateCallback(GraphicsUpdateCallback cb) { graphicsUpdateCb_ = std::move(cb); }
+
+    /// Wire a GraphicsBuffer and its companion GocaParser.
+    /// Must be called before the first processRecord() if GOCA support is desired.
+    void setGraphicsBuffer(GraphicsBuffer& buf);
 
     /// Process a complete 3270 record from the host.
     /// For TN3270E mode, strip the 5-byte header before calling.
@@ -113,9 +122,13 @@ private:
     uint8_t      mfCount_ { 0 };
     uint8_t      mfType_  { 0 };
 
-    AlarmCallback    alarmCb_;
-    UnlockCallback   unlockCb_;
-    SendCallback     sendCb_;
+    AlarmCallback           alarmCb_;
+    UnlockCallback          unlockCb_;
+    SendCallback            sendCb_;
+    GraphicsUpdateCallback  graphicsUpdateCb_;
+
+    GraphicsBuffer*              graphics_   { nullptr };
+    std::unique_ptr<GocaParser>  gocaParser_;
 };
 
 } // namespace x3270
