@@ -52,7 +52,7 @@ void KeyboardState::advanceToNextField(bool forward) {
     for (int i = 1; i <= screen_.size(); ++i) {
         int pos = (cur + delta * i + screen_.size() * 2) % screen_.size();
         const Cell& c = screen_.at(pos);
-        if (c.isFA && !c.isSkip()) {
+        if (c.isFA && !c.isProtected()) {
             // Move to the character position after the FA
             screen_.setCursor((pos + 1) % screen_.size());
             return;
@@ -232,13 +232,15 @@ bool KeyboardState::handleEraseInput() {
 
 bool KeyboardState::handleNewLine() {
     if (isLocked()) return false;
-    // Move cursor to first unprotected field on the next line
+
+    // Move to the first unprotected input field after the current row.
+    // Protected display fields can have non-skip FAs, but they are not valid
+    // input targets and must not be selected by New Line.
     int curRow = screen_.cursorPos() / screen_.cols();
     int nextRowStart = ((curRow + 1) % screen_.rows()) * screen_.cols();
-    // Search forward from nextRowStart for first unprotected field
     for (int i = 0; i < screen_.size(); ++i) {
         int pos = (nextRowStart + i) % screen_.size();
-        if (screen_.at(pos).isFA && !screen_.at(pos).isSkip()) {
+        if (screen_.at(pos).isFA && !screen_.at(pos).isProtected()) {
             screen_.setCursor((pos + 1) % screen_.size());
             return true;
         }
