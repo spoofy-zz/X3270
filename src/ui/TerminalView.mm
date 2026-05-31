@@ -28,6 +28,8 @@ static NSDictionary<NSString*, NSString*> *defaultKeyboardMappings(void) {
         @"pa1":    @"option-1",
         @"pa2":    @"option-2",
         @"pa3":    @"option-3",
+        @"eraseEOF": @"option-delete",
+        @"eraseInput": @"option-e",
     };
 }
 
@@ -602,6 +604,9 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     else if (key == NSDeleteFunctionKey) base = @"delete";
     else if (key == NSBackspaceCharacter || key == NSDeleteCharacter) base = @"backspace";
     else if (key >= '1' && key <= '9') base = [NSString stringWithFormat:@"%C", key];
+    else if ((key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z')) {
+        base = [[NSString stringWithFormat:@"%C", key] lowercaseString];
+    }
     else if (key >= NSF1FunctionKey && key <= NSF12FunctionKey) {
         base = [NSString stringWithFormat:@"f%d", (int)(key - NSF1FunctionKey + 1)];
     }
@@ -633,6 +638,8 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     else if ([m[@"pa1"] isEqualToString:signature]) handled = _kbd->handlePA(1);
     else if ([m[@"pa2"] isEqualToString:signature]) handled = _kbd->handlePA(2);
     else if ([m[@"pa3"] isEqualToString:signature]) handled = _kbd->handlePA(3);
+    else if ([m[@"eraseEOF"] isEqualToString:signature]) handled = _kbd->handleEraseEOF();
+    else if ([m[@"eraseInput"] isEqualToString:signature]) handled = _kbd->handleEraseInput();
 
     if (handled) [self setNeedsDisplay:YES];
     return handled;

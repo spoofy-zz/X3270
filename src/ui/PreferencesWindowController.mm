@@ -13,7 +13,7 @@
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         NSWindow *win = [[NSWindow alloc]
-                         initWithContentRect:NSMakeRect(0, 0, 520, 520)
+                         initWithContentRect:NSMakeRect(0, 0, 520, 590)
                                    styleMask:NSWindowStyleMaskTitled
                                             |NSWindowStyleMaskClosable
                                    backing:NSBackingStoreBuffered
@@ -35,10 +35,10 @@
     // ── Section: Font ─────────────────────────────────────────────────────────
     NSTextField *fontHeader = [NSTextField labelWithString:@"Terminal Font"];
     fontHeader.font = [NSFont boldSystemFontOfSize:13];
-    fontHeader.frame = NSMakeRect(margin, 480, 480, 20);
+    fontHeader.frame = NSMakeRect(margin, 550, 480, 20);
     [cv addSubview:fontHeader];
 
-    NSBox *sep1 = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 474, 480, 1)];
+    NSBox *sep1 = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 544, 480, 1)];
     sep1.boxType = NSBoxSeparator;
     [cv addSubview:sep1];
 
@@ -46,22 +46,22 @@
     _use3270FontCheckbox = [NSButton checkboxWithTitle:@"Use IBM 3270 font (by Ricardo Bánffy)"
                                                 target:self
                                                 action:@selector(fontCheckboxChanged:)];
-    _use3270FontCheckbox.frame = NSMakeRect(margin, 446, 480, 22);
+    _use3270FontCheckbox.frame = NSMakeRect(margin, 516, 480, 22);
     BOOL currentValue = [[NSUserDefaults standardUserDefaults] boolForKey:kPref3270FontEnabled];
     _use3270FontCheckbox.state = currentValue ? NSControlStateValueOn : NSControlStateValueOff;
     [cv addSubview:_use3270FontCheckbox];
 
     NSTextField *sizeLabel = [NSTextField labelWithString:@"Size:"];
-    sizeLabel.frame = NSMakeRect(margin + 18, 414, 42, 22);
+    sizeLabel.frame = NSMakeRect(margin + 18, 484, 42, 22);
     [cv addSubview:sizeLabel];
 
-    _fontSizeField = [[NSTextField alloc] initWithFrame:NSMakeRect(margin + 62, 412, 52, 24)];
+    _fontSizeField = [[NSTextField alloc] initWithFrame:NSMakeRect(margin + 62, 482, 52, 24)];
     _fontSizeField.alignment = NSTextAlignmentRight;
     _fontSizeField.target = self;
     _fontSizeField.action = @selector(fontSizeFieldChanged:);
     [cv addSubview:_fontSizeField];
 
-    _fontSizeStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(margin + 120, 410, 20, 28)];
+    _fontSizeStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(margin + 120, 480, 20, 28)];
     _fontSizeStepper.minValue = 8.0;
     _fontSizeStepper.maxValue = 32.0;
     _fontSizeStepper.increment = 1.0;
@@ -77,7 +77,7 @@
          "IBM 3270 terminals."];
     note.textColor = [NSColor secondaryLabelColor];
     note.font = [NSFont systemFontOfSize:11];
-    note.frame = NSMakeRect(margin + 18, 356, 452, 48);
+    note.frame = NSMakeRect(margin + 18, 426, 452, 48);
     [cv addSubview:note];
 
     // Attribution link
@@ -87,7 +87,7 @@
                 NSFontAttributeName:            [NSFont systemFontOfSize:11],
                 NSForegroundColorAttributeName: [NSColor linkColor],
             }];
-    NSButton *linkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin + 18, 334, 452, 18)];
+    NSButton *linkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin + 18, 404, 452, 18)];
     [linkBtn setAttributedTitle:linkTitle];
     linkBtn.buttonType = NSButtonTypeMomentaryLight;
     linkBtn.bordered = NO;
@@ -99,10 +99,10 @@
     // ── Section: Keyboard mapping ─────────────────────────────────────────────
     NSTextField *keyHeader = [NSTextField labelWithString:@"Keyboard Mapping"];
     keyHeader.font = [NSFont boldSystemFontOfSize:13];
-    keyHeader.frame = NSMakeRect(margin, 292, 480, 20);
+    keyHeader.frame = NSMakeRect(margin, 362, 480, 20);
     [cv addSubview:keyHeader];
 
-    NSBox *sep2 = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 286, 480, 1)];
+    NSBox *sep2 = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 356, 480, 1)];
     sep2.boxType = NSBoxSeparator;
     [cv addSubview:sep2];
 
@@ -114,9 +114,11 @@
         @[@"pa1",    @"PA1"],
         @[@"pa2",    @"PA2"],
         @[@"pa3",    @"PA3"],
+        @[@"eraseEOF",   @"Erase EOF / End of Field"],
+        @[@"eraseInput", @"Erase Input"],
     ];
 
-    CGFloat y = 252;
+    CGFloat y = 322;
     for (NSArray<NSString*> *row in rows) {
         NSTextField *label = [NSTextField labelWithString:row[1]];
         label.frame = NSMakeRect(margin + 18, y + 4, 150, 20);
@@ -185,15 +187,21 @@
         @"pa1":    @"option-1",
         @"pa2":    @"option-2",
         @"pa3":    @"option-3",
+        @"eraseEOF": @"option-delete",
+        @"eraseInput": @"option-e",
     };
 }
 
 - (NSArray<NSArray<NSString*>*> *)keyMappingChoices {
-    return @[
+    NSMutableArray<NSArray<NSString*>*> *choices = [@[
         @[@"return",        @"Return"],
         @[@"shift-return",  @"Shift-Return"],
         @[@"escape",        @"Escape"],
         @[@"option-escape", @"Option-Escape"],
+        @[@"delete",        @"Delete"],
+        @[@"option-delete", @"Option-Delete"],
+        @[@"backspace",        @"Backspace"],
+        @[@"option-backspace", @"Option-Backspace"],
         @[@"option-1",      @"Option-1"],
         @[@"option-2",      @"Option-2"],
         @[@"option-3",      @"Option-3"],
@@ -209,7 +217,16 @@
         @[@"f10",           @"F10"],
         @[@"f11",           @"F11"],
         @[@"f12",           @"F12"],
-    ];
+    ] mutableCopy];
+    for (unichar c = 'a'; c <= 'z'; c++) {
+        NSString *letter = [NSString stringWithFormat:@"%C", c];
+        NSString *upper = letter.uppercaseString;
+        [choices addObject:@[[NSString stringWithFormat:@"option-%@", letter],
+                             [NSString stringWithFormat:@"Option-%@", upper]]];
+        [choices addObject:@[[NSString stringWithFormat:@"shift-option-%@", letter],
+                             [NSString stringWithFormat:@"Shift-Option-%@", upper]]];
+    }
+    return choices;
 }
 
 - (NSDictionary<NSString*, NSString*> *)currentKeyboardMappings {
