@@ -242,10 +242,13 @@ static NSColor *colorFor3270Code(uint8_t code) {
         return;
     }
 
+    int screenSize = _screen->size();
+
     // Draw each cell
     for (int row = 0; row < _rows; ++row) {
         for (int col = 0; col < _cols; ++col) {
             int pos = row * _cols + col;
+            if (pos < 0 || pos >= screenSize) continue;
             const x3270::Cell& cell = _screen->at(pos);
 
             // Attribute positions are rendered as blanks (background colour only)
@@ -318,6 +321,7 @@ static NSColor *colorFor3270Code(uint8_t code) {
     // Draw block cursor (always visible during blink-on phase, regardless of lock state)
     if (_cursorVisible && _screen) {
         int curPos = _screen->cursorPos();
+        if (curPos < 0 || curPos >= screenSize) return;
         int curRow = curPos / _cols;
         int curCol = curPos % _cols;
         const x3270::Cell& curCell = _screen->at(curPos);

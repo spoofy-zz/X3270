@@ -149,26 +149,27 @@
 
     // Session → data received
     _session->setDataCallback([weakSelf](const std::vector<uint8_t>& record) {
-        // Called from network thread — parse and notify UI
+        // Called from network thread. Parse on the main thread because the parser
+        // mutates ScreenBuffer/GraphicsBuffer, which TerminalView also reads while drawing.
         __strong typeof(weakSelf) s = weakSelf;
         if (!s) return;
 
         // TN3270E mode: strip the 5-byte header [data-type, request, response, seq_hi, seq_lo]
         // Only do this when TN3270E was actually negotiated, not for classic TN3270.
-        const std::vector<uint8_t>* payload = &record;
-        std::vector<uint8_t> stripped;
+        std::vector<uint8_t> payload;
         if (s->_session->tn3270eActive() && record.size() >= 5) {
             // Ignore non-3270-data records (BIND_IMAGE, UNBIND, RESPONSE, etc.)
             if (record[0] != 0x00) { return; }  // not DT_3270_DATA
-            stripped.assign(record.begin() + 5, record.end());
-            payload = &stripped;
+            payload.assign(record.begin() + 5, record.end());
+        } else {
+            payload = record;
         }
 
-        s->_parser->processRecord(*payload);
-
-        dispatch_async(dispatch_get_main_queue(), ^{
+        dispatch_async(dispatch_get_main_queue(), [weakSelf, payload = std::move(payload)]() mutable {
             __strong typeof(weakSelf) s2 = weakSelf;
-            if (s2) [s2->_termView screenDidUpdate];
+            if (!s2) return;
+            s2->_parser->processRecord(payload);
+            [s2->_termView screenDidUpdate];
         });
     });
 
