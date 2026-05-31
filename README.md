@@ -1,6 +1,6 @@
 # DX3270 — Free TN3270 Terminal Emulator for macOS
 
-A native macOS (ARM - Apple Silicon + Intel) TN3270/TN3270E terminal emulator for connecting to IBM Mainframes (z/OS, z/VM, z/VSE).  
+A native macOS (ARM - Apple Silicon + Intel) TN3270/TN3270E/TN5250 terminal emulator for connecting to IBM Mainframes (z/OS, z/VM, z/VSE) and IBM i (AS/400, iSeries).  
 Built entirely in C++ and Objective-C++ on top of native Cocoa, CoreText and OpenSSL.  
 **No license fee. No Java. No X11.**
 
@@ -243,6 +243,14 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 
 ## Version History
 
+### v1.7.0 — 2026-06-03
+
+**Add 5250 Protocol Parser**
+
+- **5250 support** — A new `I5250Parser` class decodes the 5250 data stream used by IBM i (AS/400) hosts. It shares the same `ScreenBuffer` model and CoreText rendering pipeline as the 3270 parser, but implements the different command set and attribute model of 5250. The Connect dialog now includes a **Protocol** drop-down to select either TN3270E or TN5250.
+
+- **5250 command support** — Implemented the core set of 5250 commands for screen updates, field attributes, cursor movement, and input handling. The parser translates 5250 orders into the shared `ScreenBuffer` model, allowing the existing rendering and input logic to work seamlessly with both protocols.
+
 ### v1.6.0 — 2026-05-29
 
 **GDDM / GOCA graphics support**
@@ -258,8 +266,6 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 - **CoreGraphics overlay in TerminalView** — A new `drawGraphicsOverlay:` pass renders the `GraphicsBuffer` command list via Core Graphics after the text layer and before the OIA bar. GOCA coordinates (in device units matching the Usable Area QR cell dimensions `AW=9`, `AH=12`) are mapped to Cocoa pixel coordinates with Y-flip. IBM 3279 palette colours reuse the existing `colorFor3270Code()` function. EBCDIC character strings are decoded via `EbcdicCodec` and rendered with the current terminal font. Mix mode `0x04` (XOR) maps to `kCGBlendModeXOR`.
 
 - **No PC3270G/GX extensions** — IBM PC3270 Graphics Adapter proprietary extensions are out of scope for this release.
-
----
 
 ### v1.5.0 — 2026-05-28
 

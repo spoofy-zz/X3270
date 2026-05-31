@@ -37,7 +37,7 @@ static constexpr uint8_t TN5250_OPT_NEW_ENVIRON   = 0x27; ///< RFC 1572 — IBM 
 // Offset 6+:  data
 
 static constexpr uint8_t GDS_RECORD_TYPE    = 0x12;
-static constexpr uint8_t GDS_HEADER_LENGTH  = 6;
+static constexpr uint8_t GDS_HEADER_LENGTH  = 10; // 2-byte len + 0x12 + 0xA0 + flowtype(2) + varHdrLen + flags + reserved + opcode
 
 // Host→client opcodes
 static constexpr uint8_t OP_SAVE_SCREEN        = 0x01;

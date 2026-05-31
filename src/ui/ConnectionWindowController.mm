@@ -221,9 +221,44 @@
     }
 }
 
+/// Split a "host:port" string — returns YES and sets *outHost/*outPort if a port was embedded.
+- (BOOL)splitHostPort:(NSString *)raw intoHost:(NSString **)outHost port:(NSString **)outPort {
+    // Handle IPv6 addresses like [::1]:23
+    if ([raw hasPrefix:@"["] ) {
+        NSRange closeBracket = [raw rangeOfString:@"]"];
+        if (closeBracket.location != NSNotFound) {
+            NSString *ipv6 = [raw substringWithRange:NSMakeRange(1, closeBracket.location - 1)];
+            NSUInteger afterBracket = NSMaxRange(closeBracket);
+            if (afterBracket < raw.length && [raw characterAtIndex:afterBracket] == ':') {
+                *outHost = ipv6;
+                *outPort = [raw substringFromIndex:afterBracket + 1];
+                return YES;
+            }
+        }
+        return NO;
+    }
+    NSRange lastColon = [raw rangeOfString:@":" options:NSBackwardsSearch];
+    if (lastColon.location == NSNotFound) return NO;
+    // Make sure the part after the colon looks like a port number
+    NSString *portPart = [raw substringFromIndex:lastColon.location + 1];
+    NSCharacterSet *digits = [NSCharacterSet decimalDigitCharacterSet];
+    if ([portPart rangeOfCharacterFromSet:digits.invertedSet].location != NSNotFound) return NO;
+    *outHost = [raw substringToIndex:lastColon.location];
+    *outPort = portPart;
+    return YES;
+}
+
 - (void)connect:(id)sender {
-    NSString *host = [_hostCombo.stringValue stringByTrimmingCharactersInSet:
+    NSString *raw  = [_hostCombo.stringValue stringByTrimmingCharactersInSet:
                       [NSCharacterSet whitespaceCharacterSet]];
+    // If the user (or autocomplete) left a :port suffix in the host field, split it out.
+    NSString *host = raw;
+    NSString *embeddedPort = nil;
+    if ([self splitHostPort:raw intoHost:&host port:&embeddedPort] && embeddedPort.length > 0) {
+        _hostCombo.stringValue = host;
+        _portField.stringValue = embeddedPort;
+    }
+    host = [host stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
     if (host.length == 0) {
         _statusLabel.stringValue = @"Please enter a hostname.";
         return;
@@ -359,8 +394,13 @@ static const NSInteger  kHistoryMax = 20;
 
 /// Push current connection to top of history; deduplicate by host:port; cap at kHistoryMax.
 - (void)saveConnectionToHistory {
-    NSString *host = [_hostCombo.stringValue
-                      stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    NSString *raw = [_hostCombo.stringValue
+                     stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    // Strip any embedded :port (defensive, in case the host field wasn't cleaned up)
+    NSString *host = raw;
+    NSString *embeddedPort = nil;
+    if ([self splitHostPort:raw intoHost:&host port:&embeddedPort] && embeddedPort.length > 0)
+        _portField.stringValue = embeddedPort;
     NSString *port = _portField.stringValue;
     BOOL      ssl  = (_sslCheckbox.state == NSControlStateValueOn);
 
@@ -395,8 +435,14 @@ static const NSInteger  kHistoryMax = 20;
     NSInteger idx = _hostCombo.indexOfSelectedItem;
     if (idx < 0 || idx >= (NSInteger)_connectionHistory.count) return;
     NSDictionary *entry = _connectionHistory[idx];
-    _hostCombo.stringValue  = entry[@"host"];
-    _portField.stringValue  = entry[@"port"];
+    // Defer field update to the next run loop turn so it wins over
+    // NSComboBox's internal string restoration (Cocoa quirk with completes=YES).
+    NSString *host = entry[@"host"];
+    NSString *port = entry[@"port"];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        _hostCombo.stringValue = host;
+        _portField.stringValue = port;
+    });
     BOOL ssl = [entry[@"ssl"] boolValue];
     _sslCheckbox.state = ssl ? NSControlStateValueOn : NSControlStateValueOff;
     _caField.hidden = !ssl;

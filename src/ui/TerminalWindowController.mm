@@ -108,6 +108,11 @@
         _parser5250->setAlarmCallback([]() {
             dispatch_async(dispatch_get_main_queue(), ^{ NSBeep(); });
         });
+        // Query reply and other parser-initiated responses (e.g. CMD_WRITE_STRUCTURED_FIELD)
+        _parser5250->setSendCallback([weakSelf](const std::vector<uint8_t>& payload) {
+            __strong auto s = weakSelf;
+            if (s) s->_session->sendRecord(payload);
+        });
 
         _kbd5250->setSendCallback([weakSelf](const std::vector<uint8_t>& record) -> bool {
             __strong auto s = weakSelf;

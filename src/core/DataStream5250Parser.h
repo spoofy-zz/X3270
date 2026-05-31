@@ -12,8 +12,9 @@ static constexpr uint8_t CMD5250_WTD              = 0x11; ///< Write To Display
 static constexpr uint8_t CMD5250_CLEAR_UNIT        = 0x40; ///< Clear Unit
 static constexpr uint8_t CMD5250_CLEAR_UNIT_ALT    = 0x20; ///< Clear Unit Alternate
 static constexpr uint8_t CMD5250_WRITE_ERROR_CODE  = 0x21; ///< Write Error Code
-static constexpr uint8_t CMD5250_SAVE_SCREEN       = 0x04; ///< Save Screen (0x04 per IBM ref)
-static constexpr uint8_t CMD5250_RESTORE_SCREEN    = 0x05; ///< Restore Screen (0x05 per IBM ref)
+static constexpr uint8_t ESC5250               = 0x04; ///< 5250 ESC — command delimiter in data stream
+static constexpr uint8_t CMD5250_SAVE_SCREEN       = 0x02; ///< Save Screen (Java: CMD_SAVE_SCREEN=0x02)
+static constexpr uint8_t CMD5250_RESTORE_SCREEN    = 0x12; ///< Restore Screen (Java: CMD_RESTORE_SCREEN=0x12)
 static constexpr uint8_t CMD5250_READ_FIELDS       = 0x42; ///< Read Input Fields
 static constexpr uint8_t CMD5250_READ_MDT          = 0x52; ///< Read MDT Fields
 static constexpr uint8_t CMD5250_READ_IMM          = 0x72; ///< Read Immediate
@@ -70,12 +71,25 @@ private:
         SOH_Length,   SOH_Data,
         TD_LenHi,     TD_LenLo,   TD_Data,
         SBA_Row,
-        SF_FFW1,      SF_FFW2,    SF_FCW_Hi, SF_FCW_Lo,
-        SF_ScreenAttr, SF_LenHi,  SF_LenLo,
+        // SF order: optional FFW1+FFW2, then zero-or-more FCW pairs, then attr byte + 2-byte length.
+        // Detection uses (b & 0xE0) != 0x20 (not an attr byte) per 5250 reference.
+        SF_FirstByte,           ///< (b&0xE0)!=0x20 → FFW1; else b is attr byte → startField + SF_LenHi
+        SF_FFW2,                ///< Consume FFW2; next → SF_AfterFFW
+        SF_AfterFFW,            ///< Loop head: (b&0xE0)!=0x20 → FCW1 (SF_FCW2); else attr → startField + SF_LenHi
+        SF_FCW2,                ///< Consume FCW2; loop back → SF_AfterFFW
+        SF_LenHi,  SF_LenLo,   ///< Field length (2 bytes big-endian, informational only)
+        // WDSF order: 2-byte big-endian length (including the 2 length bytes), then skip body
+        WDSF_LenHi, WDSF_LenLo, WDSF_Skip,
         WEA_Skip,
+        // IC order: in 5250, IC takes explicit [row][col] parameters (unlike 3270)
+        IC_Row,       IC_Col,
         MC_Row,       MC_Col,
         RA_Row,       RA_Col,     RA_Char,
         EA_Row,       EA_Col,
+        SkipOneThenCommand,     ///< Consume one byte then return to Command (e.g. CLEAR_UNIT_ALT param)
+        // CMD_WRITE_STRUCTURED_FIELD (0xF3): consume SF body bytes, then fire query reply.
+        // Uses sohRemaining_ as the byte counter.
+        WSF_Skip,               ///< Skip SF body bytes after WRITE STRUCTURED FIELD (0xF3)
     };
 
     ScreenBuffer& screen_;
@@ -92,13 +106,18 @@ private:
     uint8_t  raRow_         { 0 };
     uint8_t  raCol_         { 0 };
 
-    // Active field attributes (accumulated from FFW)
-    uint8_t  currentFFW1_   { 0 };
-    uint8_t  currentFFW2_   { 0 };
-    uint8_t  currentFgColor_{ 0 };
+    // Active field attributes (accumulated from SF order parsing)
+    uint8_t  currentFFW1_    { 0 };
+    uint8_t  currentFFW2_    { 0 };
+    uint8_t  currentFgColor_ { 0 };
+    uint8_t  currentFieldLenHi_ { 0 }; ///< High byte of SF field length
 
     void handleCommand(uint8_t cmd);
     void handleDataByte(uint8_t b);
+
+    /// Build the 61-byte query reply payload (per IBM 5250 Functions Reference, §15.27.2).
+    /// Device type/model is inferred from screen dimensions.
+    std::vector<uint8_t> buildQueryReplyPayload() const;
 
     /// Map 5250 FFW bytes to a 3270-compatible ScreenBuffer attribute byte.
     uint8_t ffw1ToAttr(uint8_t ffw1) const;

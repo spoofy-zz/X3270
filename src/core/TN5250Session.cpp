@@ -4,15 +4,15 @@
 namespace x3270 {
 
 // ── Terminal type strings ─────────────────────────────────────────────────────
-// IBM-3477-FC: 24×80 colour display (most compatible with AS/400 Telnet server)
-// IBM-3477-FC-2: 27×132 colour display
+// IBM-3477-FC : 24×80 colour display — recognized by IBM i / AS400 Telnet server
+// IBM-3180-2  : 27×132 colour display — recognized by IBM i; "IBM-3477-FC-2" is NOT valid
 const char* TN5250Session::terminalTypeName() const {
     switch (model_) {
     case TerminalModel::Model5:
     case TerminalModel::LargeCustom:
-        return "IBM-3477-FC-2";   // 27×132
+        return "IBM-3180-2";   // 27×132 colour — valid IBM i terminal type
     default:
-        return "IBM-3477-FC";     // 24×80
+        return "IBM-3477-FC";  // 24×80 colour
     }
 }
 
@@ -40,16 +40,12 @@ bool TN5250Session::connect(const std::string& host, uint16_t port,
     currentRecord_.clear();
     subnegBuf_.clear();
 
-    // RFC 2877: offer BINARY + EOR + TERMINAL-TYPE proactively.
-    // RFC 858/2877 SHOULD: also negotiate SUPPRESS-GO-AHEAD so the server does
-    // NOT enter half-duplex mode (where it waits for a Go-Ahead before sending).
-    sendWill(TN5250_OPT_BINARY);        sentWillBinary_   = true;
-    sendDo(TN5250_OPT_BINARY);          sentDoBinary_     = true;
-    sendWill(TN5250_OPT_EOR);           sentWillEOR_      = true;
-    sendDo(TN5250_OPT_EOR);             sentDoEOR_        = true;
-    sendWill(TN5250_OPT_TERMINAL_TYPE); sentWillTermType_ = true;
-    sendWill(TN5250_OPT_SGA);           sentWillSGA_      = true;
-    sendDo(TN5250_OPT_SGA);             sentDoSGA_        = true;
+    // RFC 854 / RFC 2877: do NOT send proactive WILL/DO options.
+    // pub400.com (and standard IBM i) drives the negotiation: it sends DO EOR,
+    // DO BINARY, DO TERMINAL-TYPE, DO NEW-ENVIRON in sequence.  We respond to
+    // each reactively.  Sending WILL EOR proactively and then skipping the WILL EOR
+    // reply to the server's DO EOR causes the server to hang waiting for confirmation.
+    // This matches the tn5250 reference library (telnetstr.c: sends nothing at connect).
 
     return true;
 }
@@ -63,17 +59,28 @@ void TN5250Session::disconnect() {
 bool TN5250Session::sendRecord(const std::vector<uint8_t>& record) {
     if (state_ != State::Connected) return false;
 
-    // Build GDS wrapper: [len_hi][len_lo][0x00][0x00][0x00][0x00][data...]
-    // Client→host records use type 0x00 (response direction).
+    // Build GDS wrapper — 10-byte header per tn5250 reference (telnetstr.c / record.h):
+    //   [0-1] total length (big-endian)
+    //   [2]   0x12  GDS record type
+    //   [3]   0xA0  reserved
+    //   [4-5] 0x00  flowtype (TN5250_RECORD_FLOW_DISPLAY = 0x00)
+    //   [6]   0x04  variable header length
+    //   [7]   0x00  flags (TN5250_RECORD_H_NONE)
+    //   [8]   0x00  reserved
+    //   [9]   0x00  opcode (TN5250_RECORD_OPCODE_NO_OP)
     uint16_t totalLen = static_cast<uint16_t>(GDS_HEADER_LENGTH + record.size());
     std::vector<uint8_t> gds;
     gds.reserve(totalLen);
     gds.push_back(static_cast<uint8_t>(totalLen >> 8));
     gds.push_back(static_cast<uint8_t>(totalLen & 0xFF));
-    gds.push_back(0x00); // type: client→host
-    gds.push_back(0x00);
-    gds.push_back(0x00);
-    gds.push_back(0x00);
+    gds.push_back(0x12); // GDS record type
+    gds.push_back(0xA0); // reserved
+    gds.push_back(0x00); // flowtype hi (TN5250_RECORD_FLOW_DISPLAY)
+    gds.push_back(0x00); // flowtype lo
+    gds.push_back(0x04); // variable header length
+    gds.push_back(0x00); // flags (TN5250_RECORD_H_NONE)
+    gds.push_back(0x00); // reserved
+    gds.push_back(0x00); // opcode (TN5250_RECORD_OPCODE_NO_OP)
     gds.insert(gds.end(), record.begin(), record.end());
 
     auto escaped = escapeRecord(gds);
@@ -197,59 +204,66 @@ void TN5250Session::processByte(uint8_t byte) {
 
 // ── IAC option commands ───────────────────────────────────────────────────────
 void TN5250Session::processIacCommand(uint8_t cmd, uint8_t opt) {
+    // Purely reactive negotiation matching the tn5250 reference library:
+    //   DO X   → WILL X  (for supported options)
+    //   DO X   → WONT X  (for unsupported)
+    //   WILL X → DO X    (for supported options)
+    //   WILL X → DONT X  (for unsupported)
+    //   DONT/WONT: acknowledge by clearing flag, no reply
+    // No deduplication — always reply, even if we replied before.
+    // (Reference comment: "We should really keep track of states here, but the
+    //  code has been like this for some time, and no complaints.")
+
     switch (opt) {
     case TN5250_OPT_BINARY:
         if (cmd == TN5250_DO) {
             doBinary_ = true;
-            if (!sentWillBinary_) { sentWillBinary_ = true; sendWill(TN5250_OPT_BINARY); }
+            sentWillBinary_ = true;
+            sendWill(TN5250_OPT_BINARY);
         } else if (cmd == TN5250_WILL) {
             willBinary_ = true;
-            if (!sentDoBinary_) { sentDoBinary_ = true; sendDo(TN5250_OPT_BINARY); }
+            sentDoBinary_ = true;
+            sendDo(TN5250_OPT_BINARY);
         } else if (cmd == TN5250_DONT) { doBinary_   = false; }
-        else if (cmd == TN5250_WONT)   { willBinary_ = false; }
+        else if  (cmd == TN5250_WONT)  { willBinary_ = false; }
         break;
 
     case TN5250_OPT_EOR:
         if (cmd == TN5250_DO) {
+            // Server requests EOR framing from us — confirm with WILL EOR.
+            // This is the key step pub400.com waits for before sending 5250 data.
             doEOR_ = true;
-            if (!sentWillEOR_) { sentWillEOR_ = true; sendWill(TN5250_OPT_EOR); }
+            sentWillEOR_ = true;
+            sendWill(TN5250_OPT_EOR);
         } else if (cmd == TN5250_WILL) {
             willEOR_ = true;
-            if (!sentDoEOR_) { sentDoEOR_ = true; sendDo(TN5250_OPT_EOR); }
+            sentDoEOR_ = true;
+            sendDo(TN5250_OPT_EOR);
         } else if (cmd == TN5250_DONT) { doEOR_  = false; }
-        else if (cmd == TN5250_WONT)   { willEOR_ = false; }
+        else if  (cmd == TN5250_WONT)  { willEOR_ = false; }
         break;
 
     case TN5250_OPT_TERMINAL_TYPE:
         if (cmd == TN5250_DO) {
             doTermType_ = true;
-            if (!sentWillTermType_) { sentWillTermType_ = true; sendWill(TN5250_OPT_TERMINAL_TYPE); }
+            sentWillTermType_ = true;
+            sendWill(TN5250_OPT_TERMINAL_TYPE);
         }
         break;
 
     case TN5250_OPT_SGA:
-        // RFC 2877 SHOULD: suppress go-ahead on both sides for full-duplex binary mode.
-        // Responding DONT to WILL SGA would put the server in half-duplex mode,
-        // causing it to wait for a Go-Ahead token before transmitting — leaving
-        // the session silent. Respond DO/WILL to keep the channel full-duplex.
-        if (cmd == TN5250_DO) {
-            if (!sentWillSGA_) { sentWillSGA_ = true; sendWill(TN5250_OPT_SGA); }
-        } else if (cmd == TN5250_WILL) {
-            if (!sentDoSGA_)   { sentDoSGA_   = true; sendDo(TN5250_OPT_SGA);   }
-        }
+        // RFC 858: Suppress Go-Ahead — agree on both sides for full-duplex.
+        if (cmd == TN5250_DO)   { sentWillSGA_ = true; sendWill(TN5250_OPT_SGA); }
+        if (cmd == TN5250_WILL) { sentDoSGA_   = true; sendDo  (TN5250_OPT_SGA); }
         break;
 
     case TN5250_OPT_NEW_ENVIRON:
-        // IBM i uses NEW-ENVIRON (RFC 1572) to obtain the 5250 workstation/device name.
-        // If we refuse (WONT), the server will not send the sign-on screen.
-        // Accept and reply with a device name in the SB IS response.
-        if (cmd == TN5250_DO) {
-            if (!sentWillNewEnv_) { sentWillNewEnv_ = true; sendWill(TN5250_OPT_NEW_ENVIRON); }
-        }
-        // Ignore WILL NEW-ENVIRON from server (we don't need server's env vars)
+        // IBM i uses NEW-ENVIRON to request the 5250 workstation/device name.
+        if (cmd == TN5250_DO) { sentWillNewEnv_ = true; sendWill(TN5250_OPT_NEW_ENVIRON); }
         break;
 
     default:
+        // Refuse any unsupported option
         if (cmd == TN5250_DO)   sendWont(opt);
         if (cmd == TN5250_WILL) sendDont(opt);
         break;
@@ -311,11 +325,22 @@ void TN5250Session::sendTerminalType() {
 
 void TN5250Session::tryEnterDataMode() {
     if (state_ == State::Connected) return;
-    // Path 1: strict RFC 2877 — server explicitly confirmed BINARY + EOR + queried terminal type
-    // Path 2: relaxed — server sent SB TERMINAL-TYPE SEND and we replied with IS;
-    //          some IBM i servers omit explicit DO BINARY / DO EOR confirmations.
-    if ((doBinary_ && doEOR_ && doTermType_) || sentTerminalTypeIs_)
+
+    // Path 1 (standard IBM i flow):
+    //   EOR negotiated in either direction (server sent DO EOR → we replied WILL EOR,
+    //   OR server sent WILL EOR → we replied DO EOR) AND terminal type IS was sent.
+    //   This is the trigger used by the tn5250 reference library.
+    if (sentTerminalTypeIs_ && (willEOR_ || doEOR_)) {
         enterDataMode();
+        return;
+    }
+
+    // Path 2 (fallback for non-standard servers that skip EOR/BINARY negotiation):
+    //   Terminal type IS sent, and no EOR or BINARY option has been offered by
+    //   either side.  Enter data mode to avoid blocking forever.
+    if (sentTerminalTypeIs_ && !willEOR_ && !doEOR_ && !willBinary_ && !doBinary_) {
+        enterDataMode();
+    }
 }
 
 void TN5250Session::enterDataMode() {
