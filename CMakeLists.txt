@@ -24,6 +24,7 @@ set(CORE_SOURCES
     src/core/KeyboardState.cpp
     src/core/GraphicsBuffer.cpp
     src/core/GocaParser.cpp
+    src/core/FileTransfer.cpp
 )
 
 set(UI_SOURCES

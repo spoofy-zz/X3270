@@ -62,6 +62,17 @@
                             action:@selector(exportText:)
                      keyEquivalent:@"T"];   // ⌘⇧T
     exportItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    [fileMenu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *uploadItem =
+        [fileMenu addItemWithTitle:@"IND$FILE Upload…"
+                            action:@selector(uploadFile:)
+                     keyEquivalent:@"U"];   // ⌘⇧U
+    uploadItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    NSMenuItem *downloadItem =
+        [fileMenu addItemWithTitle:@"IND$FILE Download…"
+                            action:@selector(downloadFile:)
+                     keyEquivalent:@"L"];   // ⌘⇧L
+    downloadItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
 
     // Edit menu (for copy/paste system integration)
     NSMenuItem *editMenuItem = [[NSMenuItem alloc] init];
@@ -70,6 +81,27 @@
     editMenuItem.submenu = editMenu;
     [editMenu addItemWithTitle:@"Copy"  action:@selector(copy:)  keyEquivalent:@"c"];
     [editMenu addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+
+    // View menu
+    NSMenuItem *viewMenuItem = [[NSMenuItem alloc] init];
+    [menuBar addItem:viewMenuItem];
+    NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+    viewMenuItem.submenu = viewMenu;
+    NSMenuItem *largerItem =
+        [viewMenu addItemWithTitle:@"Increase Font Size"
+                            action:@selector(increaseFontSize:)
+                     keyEquivalent:@"+"];
+    largerItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+    NSMenuItem *smallerItem =
+        [viewMenu addItemWithTitle:@"Decrease Font Size"
+                            action:@selector(decreaseFontSize:)
+                     keyEquivalent:@"-"];
+    smallerItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+    NSMenuItem *resetFontItem =
+        [viewMenu addItemWithTitle:@"Reset Font Size"
+                            action:@selector(resetFontSize:)
+                     keyEquivalent:@"0"];
+    resetFontItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
 
     // Debug menu
     NSMenuItem *debugMenuItem = [[NSMenuItem alloc] init];

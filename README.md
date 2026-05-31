@@ -77,6 +77,8 @@ The setting is saved and restored on every launch.
 | **Query Reply** | Responds to IBM Structured Field Read Partition Query (required for ISPF); advertises GOCA graphics capability |
 | **GDDM / GOCA graphics** | Full GOCA order-stream decoder: filled rectangles, full arcs (circles), absolute and relative line sequences, character strings at absolute position, set-colour, set-mix, and segment boundaries. Rendered as a CoreGraphics vector overlay on top of the text layer. Coordinate space AW=9/AH=12 units per cell, Y-flipped for Cocoa. IBM 3279 palette (0xF1–0xF7) colours. See [GDDM / GOCA Graphics](#gddm--goca-graphics). |
 | **Rendering** | CoreText glyph metrics for pixel-perfect character grid; CoreGraphics vector overlay for GOCA graphics |
+| **Font size** | Runtime terminal font scaling from Preferences or View menu (`⌘+`, `⌘-`, `⌘0`), persisted across launches |
+| **IND$FILE download** | Saves host files locally using `IND$FILE GET` and DFT structured-field acknowledgements; ASCII/BINARY modes |
 | **App icon** | Native macOS squircle icon — white gradient, bold DX3270 lettering with green terminal cursor, bundled as `AppIcon.icns` |
 | **Shortcuts reference** | Built-in keyboard shortcuts window — DX3270 → Keyboard Shortcuts… (`⌘/`) |
 | **Screenshot** | Save the terminal screen as a PNG image (File → Save Screenshot… `⌘⇧P`) |
@@ -160,8 +162,10 @@ The terminal window opens. Type your credentials at the logon screen. ISPF and T
 |---|---|
 | `⌘N` | New Connection |
 | `⌘,` | Preferences |
+| `⌘+` / `⌘-` / `⌘0` | Increase / decrease / reset terminal font size |
 | `⌘⇧P` | Save Screenshot |
 | `⌘⇧T` | Export Screen as Text |
+| `⌘⇧L` | IND$FILE Download |
 | `⌘⇧D` | Traffic Monitor |
 | `⌘/` | Keyboard Shortcuts window |
 | `⌘Q` | Quit DX3270 |

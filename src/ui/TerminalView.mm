@@ -7,6 +7,15 @@
 
 /// NSUserDefaults key – BOOL; YES = use bundled IBM 3270 font
 NSString * const kPref3270FontEnabled = @"use3270Font";
+/// NSUserDefaults key – double; terminal font size in points
+NSString * const kPrefTerminalFontSize = @"terminalFontSize";
+
+static const CGFloat kMinTerminalFontSize = 8.0;
+static const CGFloat kMaxTerminalFontSize = 32.0;
+
+static CGFloat clampTerminalFontSize(CGFloat size) {
+    return MIN(kMaxTerminalFontSize, MAX(kMinTerminalFontSize, size));
+}
 
 // ── 3270-font loader (called once) ───────────────────────────────────────────
 // Registers all three weight variants from the app bundle's Resources/fonts/
@@ -108,14 +117,17 @@ static NSColor *colorFor3270Code(uint8_t code) {
 /// Pick the right NSFont based on the current kPref3270FontEnabled user default.
 - (void)applyFontFromPreferences {
     BOOL use3270 = [[NSUserDefaults standardUserDefaults] boolForKey:kPref3270FontEnabled];
+    NSNumber *storedSize = [[NSUserDefaults standardUserDefaults] objectForKey:kPrefTerminalFontSize];
+    CGFloat fontSize = storedSize ? clampTerminalFontSize(storedSize.doubleValue)
+                                  : (use3270 ? 16.0 : 14.0);
     if (use3270) {
         // PostScript name is "3270-Regular" (confirmed from the OTF name table)
-        _terminalFont = [NSFont fontWithName:@"3270-Regular" size:16.0]
-                     ?: [NSFont fontWithName:@"Menlo" size:14.0]
-                     ?: [NSFont monospacedSystemFontOfSize:14.0 weight:NSFontWeightRegular];
+        _terminalFont = [NSFont fontWithName:@"3270-Regular" size:fontSize]
+                     ?: [NSFont fontWithName:@"Menlo" size:fontSize]
+                     ?: [NSFont monospacedSystemFontOfSize:fontSize weight:NSFontWeightRegular];
     } else {
-        _terminalFont = [NSFont fontWithName:@"Menlo" size:14.0]
-                     ?: [NSFont monospacedSystemFontOfSize:14.0 weight:NSFontWeightRegular];
+        _terminalFont = [NSFont fontWithName:@"Menlo" size:fontSize]
+                     ?: [NSFont monospacedSystemFontOfSize:fontSize weight:NSFontWeightRegular];
     }
 }
 
@@ -124,7 +136,26 @@ static NSColor *colorFor3270Code(uint8_t code) {
     [self recalcCellSize];
     [self setNeedsDisplay:YES];
     // Resize the window to the new preferred size (cell dimensions may have changed)
-    [self.window setContentSize:[self preferredSize]];
+    if (self.window) {
+        [self.window setContentSize:[self preferredSize]];
+    }
+}
+
+- (void)setPreferredTerminalFontSize:(CGFloat)fontSize {
+    [[NSUserDefaults standardUserDefaults] setDouble:clampTerminalFontSize(fontSize)
+                                             forKey:kPrefTerminalFontSize];
+}
+
+- (IBAction)increaseFontSize:(id)sender {
+    [self setPreferredTerminalFontSize:_terminalFont.pointSize + 1.0];
+}
+
+- (IBAction)decreaseFontSize:(id)sender {
+    [self setPreferredTerminalFontSize:_terminalFont.pointSize - 1.0];
+}
+
+- (IBAction)resetFontSize:(id)sender {
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:kPrefTerminalFontSize];
 }
 
 - (void)dealloc {

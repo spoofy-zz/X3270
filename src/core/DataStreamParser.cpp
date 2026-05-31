@@ -275,6 +275,12 @@ void DataStreamParser::handleWSF(const std::vector<uint8_t>& record) {
         const uint8_t* payload     = record.data() + i + 3;
         size_t         payloadSize = (sfLen >= 3) ? (sfLen - 3) : 0;
 
+        if (structuredFieldCb_ &&
+            structuredFieldCb_(record.data() + i, sfLen)) {
+            i += sfLen;
+            continue;
+        }
+
         switch (sfType) {
 
         case 0x01:
@@ -346,14 +352,15 @@ std::vector<uint8_t> DataStreamParser::buildQueryReply() const {
     // ── Query Reply (Summary) — 0x81 ────────────────────────────────────────
     // MUST list every QR type present in this response (including itself).
     // Length = 2 (len field) + 1 (type) + N listed codes.
-    // Types listed: Usable Area=0x80, Summary=0x81, Data Streams=0x84, Color=0x86, Highlight=0x87
-    r.push_back(0x00); r.push_back(0x08); // length = 8
-    r.push_back(0x81);                    // type: Summary
+    // Types listed: Usable Area, Summary, Data Streams, Color, Highlight, DDM.
+    r.push_back(0x00); r.push_back(0x09); // length = 9
+    r.push_back(0x81);                    // SFID: Query Reply
     r.push_back(0x80);                    // Usable Area
     r.push_back(0x81);                    // Summary itself
     r.push_back(0x84);                    // Data Streams (GOCA)
     r.push_back(0x86);                    // Color
     r.push_back(0x87);                    // Highlighting
+    r.push_back(0x95);                    // DDM (IND$FILE DFT)
 
     // ── Query Reply (Usable Area) — 0x80 ────────────────────────────────────
     // 2+1+1+1+2+2+1+2+2+1+1+2 = 18 bytes  (per IBM GA23-0059)
@@ -412,6 +419,19 @@ std::vector<uint8_t> DataStreamParser::buildQueryReply() const {
     r.push_back(0x00);                    // flags (reserved)
     r.push_back(0x01);                    // Np = 1 supported stream type
     r.push_back(0x02);                    // stream type 0x02 = GOCA
+
+    // ── Query Reply (DDM) — 0x95 ─────────────────────────────────────────────
+    // Advertises Distributed Data Management attachment so IND$FILE uses DFT
+    // structured fields instead of CUT/asynchronous screen data frames.
+    // Format: SFID(0x81), QCODE(0x95), flags, LIMIN, LIMOUT, NSS, DDMSS.
+    r.push_back(0x00); r.push_back(0x0C); // length = 12
+    r.push_back(0x81);                    // SFID: Query Reply
+    r.push_back(0x95);                    // QCODE: DDM
+    r.push_back(0x00); r.push_back(0x00); // flags
+    r.push_back(0x08); r.push_back(0x00); // LIMIN  = 2048 bytes
+    r.push_back(0x08); r.push_back(0x00); // LIMOUT = 2048 bytes
+    r.push_back(0x01);                    // NSS = 1 subset
+    r.push_back(0x01);                    // DDMSS = DDM Copy Subset 1
 
     return r;
 }

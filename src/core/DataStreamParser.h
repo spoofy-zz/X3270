@@ -52,6 +52,7 @@ public:
     using UnlockCallback        = std::function<void()>;
     using SendCallback          = std::function<void(const std::vector<uint8_t>&)>;
     using GraphicsUpdateCallback= std::function<void()>;
+    using StructuredFieldCallback = std::function<bool(const uint8_t*, size_t)>;
 
     DataStreamParser(ScreenBuffer& screen, EbcdicCodec& codec);
 
@@ -59,6 +60,7 @@ public:
     void setUnlockCallback(UnlockCallback cb)            { unlockCb_         = std::move(cb); }
     void setSendCallback(SendCallback cb)                { sendCb_           = std::move(cb); }
     void setGraphicsUpdateCallback(GraphicsUpdateCallback cb) { graphicsUpdateCb_ = std::move(cb); }
+    void setStructuredFieldCallback(StructuredFieldCallback cb) { structuredFieldCb_ = std::move(cb); }
 
     /// Wire a GraphicsBuffer and its companion GocaParser.
     /// Must be called before the first processRecord() if GOCA support is desired.
@@ -126,6 +128,7 @@ private:
     UnlockCallback          unlockCb_;
     SendCallback            sendCb_;
     GraphicsUpdateCallback  graphicsUpdateCb_;
+    StructuredFieldCallback structuredFieldCb_;
 
     GraphicsBuffer*              graphics_   { nullptr };
     std::unique_ptr<GocaParser>  gocaParser_;

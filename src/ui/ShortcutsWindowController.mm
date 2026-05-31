@@ -99,8 +99,11 @@
     SECTION(@"Application");
     ROW(@"⌘ N",                @"New Connection — open a new Connect dialog");
     ROW(@"⌘ ,",                @"Preferences — font and display settings");
+    ROW(@"⌘ + / ⌘ - / ⌘ 0",   @"Font Size — increase, decrease, or reset terminal font");
     ROW(@"⌘ ⇧ P",             @"Save Screenshot — capture screen as PNG");
     ROW(@"⌘ ⇧ T",             @"Export as Text — save screen content to UTF-8 file");
+    ROW(@"⌘ ⇧ U",             @"IND$FILE Upload — not implemented yet");
+    ROW(@"⌘ ⇧ L",             @"IND$FILE Download — save host file locally");
     ROW(@"⌘ ⇧ D",             @"Traffic Monitor — inspect raw Telnet / TN3270 bytes");
     ROW(@"⌘ /",               @"Keyboard Shortcuts — show this window");
     ROW(@"⌘ Q",               @"Quit DX3270");

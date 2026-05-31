@@ -6,6 +6,7 @@
 #include "KeyboardState.h"
 #include "ScreenBuffer.h"
 #include "GraphicsBuffer.h"
+#include "FileTransfer.h"
 #include "EbcdicCodec.h"
 #include <memory>
 #include <thread>
@@ -22,6 +23,7 @@
     std::unique_ptr<x3270::DataStreamParser>  _parser;
     std::unique_ptr<x3270::KeyboardState>     _kbd;
     std::unique_ptr<x3270::TN3270Session>     _session;
+    std::unique_ptr<x3270::FileTransfer>      _fileTransfer;
 
     std::thread _networkThread;
 
@@ -81,6 +83,7 @@
     _parser->setGraphicsBuffer(*_graphics);
     _kbd      = std::make_unique<x3270::KeyboardState>(*_screen, *_codec);
     _session  = std::make_unique<x3270::TN3270Session>();
+    _fileTransfer = std::make_unique<x3270::FileTransfer>();
     _session->setModel(_model);
 
     __weak TerminalWindowController *weakSelf = self;
@@ -110,6 +113,31 @@
     _parser->setSendCallback([weakSelf](const std::vector<uint8_t>& data) {
         __strong typeof(weakSelf) s = weakSelf;
         if (s) s->_session->send3270Record(data);
+    });
+
+    // Parser -> IND$FILE DFT structured fields.
+    _parser->setStructuredFieldCallback([weakSelf](const uint8_t* data, size_t length) -> bool {
+        __strong typeof(weakSelf) s = weakSelf;
+        if (!s || !s->_fileTransfer) return false;
+        return s->_fileTransfer->processStructuredField(data, length);
+    });
+
+    _fileTransfer->setSendCallback([weakSelf](const std::vector<uint8_t>& record) -> bool {
+        __strong typeof(weakSelf) s = weakSelf;
+        if (!s || !s->_session) return false;
+        return s->_session->send3270Record(record);
+    });
+    _fileTransfer->setCompleteCallback([weakSelf](bool ok, const std::string& message) {
+        NSString *text = [NSString stringWithUTF8String:message.c_str()];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) s = weakSelf;
+            if (!s) return;
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = ok ? @"File Transfer Complete" : @"File Transfer Failed";
+            alert.informativeText = text ?: @"";
+            [alert addButtonWithTitle:@"OK"];
+            [alert beginSheetModalForWindow:s.window completionHandler:nil];
+        });
     });
 
     // Keyboard → send AID records to session (returns false if not yet connected)
@@ -294,12 +322,153 @@
     }];
 }
 
+// ── Host-side IND$FILE command helpers ───────────────────────────────────────
+
+- (NSString *)escapedIndFileName:(NSString *)name {
+    NSString *trimmed = [name stringByTrimmingCharactersInSet:
+                         [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length >= 2 &&
+        [trimmed hasPrefix:@"'"] &&
+        [trimmed hasSuffix:@"'"]) {
+        return trimmed;
+    }
+    return [NSString stringWithFormat:@"'%@'",
+            [trimmed stringByReplacingOccurrencesOfString:@"'" withString:@"''"]];
+}
+
+- (void)showTransferError:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"File Transfer";
+    alert.informativeText = message;
+    [alert addButtonWithTitle:@"OK"];
+    [alert beginSheetModalForWindow:self.window completionHandler:nil];
+}
+
+- (BOOL)enterHostCommand:(NSString *)command submit:(BOOL)submit {
+    if (!_kbd || !_screen) return NO;
+    if (_kbd->isLocked()) {
+        [self showTransferError:@"The terminal keyboard is locked. Wait for the host to unlock the session, then try again."];
+        return NO;
+    }
+
+    if (!_kbd->handleEraseEOF()) {
+        [self showTransferError:@"Place the cursor in the TSO command input field, then start IND$FILE Download again."];
+        return NO;
+    }
+    NSData *ascii = [command dataUsingEncoding:NSASCIIStringEncoding allowLossyConversion:YES];
+    const uint8_t *bytes = static_cast<const uint8_t *>(ascii.bytes);
+    for (NSUInteger i = 0; i < ascii.length; ++i) {
+        if (bytes[i] < 0x20 || bytes[i] >= 0x7F) continue;
+        if (!_kbd->handleChar(bytes[i])) {
+            [_termView screenDidUpdate];
+            [self showTransferError:@"The IND$FILE command did not fit in the current input field or the field is protected."];
+            return NO;
+        }
+    }
+    [_termView screenDidUpdate];
+    if (submit) {
+        _kbd->handleEnter();
+    }
+    return YES;
+}
+
+- (void)promptForHostFileWithTitle:(NSString *)title
+                      defaultValue:(NSString *)defaultValue
+                         completed:(void (^)(NSString *hostFile, BOOL binaryMode, BOOL submit))completed {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = title;
+    alert.informativeText = @"Enter the TSO/CMS host file name. DX3270 will place the IND$FILE command in the active input field.";
+    [alert addButtonWithTitle:@"Insert Command"];
+    [alert addButtonWithTitle:@"Insert and Submit"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    NSView *accessory = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 360, 56)];
+    NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 28, 360, 24)];
+    field.stringValue = defaultValue ?: @"";
+    [accessory addSubview:field];
+    NSButton *binary = [NSButton checkboxWithTitle:@"Binary transfer" target:nil action:nil];
+    binary.frame = NSMakeRect(0, 0, 180, 22);
+    binary.state = NSControlStateValueOff;
+    [accessory addSubview:binary];
+    alert.accessoryView = accessory;
+
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
+        if (result == NSAlertThirdButtonReturn) return;
+        NSString *hostFile = [field.stringValue stringByTrimmingCharactersInSet:
+                              [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (hostFile.length == 0) return;
+        BOOL submit = (result == NSAlertSecondButtonReturn);
+        BOOL binaryMode = (binary.state == NSControlStateValueOn);
+        completed(hostFile, binaryMode, submit);
+    }];
+}
+
+- (void)promptForDownloadHostFileWithDefault:(NSString *)defaultValue
+                                   completed:(void (^)(NSString *hostFile, BOOL binaryMode))completed {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Download with IND$FILE";
+    alert.informativeText = @"Enter the TSO/CMS host file or data set name. DX3270 will start IND$FILE GET and save the received data to the selected local file.";
+    [alert addButtonWithTitle:@"Start Download"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    NSView *accessory = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 360, 56)];
+    NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 28, 360, 24)];
+    field.stringValue = defaultValue ?: @"";
+    [accessory addSubview:field];
+    NSButton *binary = [NSButton checkboxWithTitle:@"Binary transfer" target:nil action:nil];
+    binary.frame = NSMakeRect(0, 0, 180, 22);
+    binary.state = NSControlStateValueOff;
+    [accessory addSubview:binary];
+    alert.accessoryView = accessory;
+
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
+        if (result != NSAlertFirstButtonReturn) return;
+        NSString *hostFile = [field.stringValue stringByTrimmingCharactersInSet:
+                              [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (hostFile.length == 0) return;
+        completed(hostFile, binary.state == NSControlStateValueOn);
+    }];
+}
+
+- (IBAction)uploadFile:(id)sender {
+    [self showTransferError:@"Upload is not implemented yet. Download via IND$FILE GET is implemented first because it requires receiving and acknowledging host DFT data in the active session."];
+}
+
+- (IBAction)downloadFile:(id)sender {
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    panel.message = @"Choose where DX3270 should save the downloaded host file.";
+    panel.nameFieldStringValue = @"host-file.txt";
+
+    [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
+        if (result != NSModalResponseOK) return;
+
+        NSString *defaultHostName = panel.URL.lastPathComponent.stringByDeletingPathExtension.uppercaseString;
+        [self promptForDownloadHostFileWithDefault:defaultHostName
+                                         completed:^(NSString *hostFile, BOOL binaryMode) {
+            std::string error;
+            bool asciiMode = !binaryMode;
+            if (!self->_fileTransfer->beginDownload(panel.URL.path.UTF8String, asciiMode, error)) {
+                NSString *msg = [NSString stringWithUTF8String:error.c_str()];
+                [self showTransferError:msg ?: @"Cannot open local file."];
+                return;
+            }
+
+            NSString *mode = binaryMode ? @"BINARY" : @"ASCII CRLF";
+            NSString *command = [NSString stringWithFormat:@"IND$FILE GET %@ %@",
+                                 [self escapedIndFileName:hostFile], mode];
+            [self enterHostCommand:command submit:YES];
+        }];
+    }];
+}
+
 // ── Menu validation ───────────────────────────────────────────────────────────
 
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
     SEL action = item.action;
     if (action == @selector(saveScreenshot:) ||
-        action == @selector(exportText:)) {
+        action == @selector(exportText:) ||
+        action == @selector(uploadFile:) ||
+        action == @selector(downloadFile:)) {
         return _session != nullptr;
     }
     return YES;
