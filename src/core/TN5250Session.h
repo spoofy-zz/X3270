@@ -19,12 +19,14 @@ static constexpr uint8_t TN5250_SB   = 0xFA;
 static constexpr uint8_t TN5250_SE   = 0xF0;
 static constexpr uint8_t TN5250_EOR  = 0xEF;
 static constexpr uint8_t TN5250_NOP  = 0xF1;
+static constexpr uint8_t TN5250_GA   = 0xF9; ///< Go-Ahead — treat as record terminator if SGA not active
 static constexpr uint8_t TN5250_IP   = 0xF4;
 
 static constexpr uint8_t TN5250_OPT_BINARY        = 0x00;
 static constexpr uint8_t TN5250_OPT_SGA           = 0x03; ///< Suppress Go-Ahead (RFC 858)
 static constexpr uint8_t TN5250_OPT_TERMINAL_TYPE = 0x18;
 static constexpr uint8_t TN5250_OPT_EOR           = 0x19;
+static constexpr uint8_t TN5250_OPT_NEW_ENVIRON   = 0x27; ///< RFC 1572 — IBM i uses this to obtain device name
 
 // ── 5250 GDS record structure (host → client) ─────────────────────────────────
 // Offset 0-1: total length including header (big-endian)
@@ -114,6 +116,7 @@ private:
     bool sentTerminalTypeIs_{ false }; ///< true once SB TERMINAL-TYPE IS was sent
     bool sentWillSGA_      { false }; ///< RFC 2877 SHOULD: both sides suppress go-ahead
     bool sentDoSGA_        { false };
+    bool sentWillNewEnv_   { false }; ///< true once WILL NEW-ENVIRON has been sent
 
     std::vector<uint8_t> currentRecord_;
     std::vector<uint8_t> subnegBuf_;
@@ -125,6 +128,7 @@ private:
     void enterDataMode();
     void tryEnterDataMode();
     void tryDispatchGdsRecord(); ///< length-based GDS dispatch for EOR-less servers
+    void sendNewEnvironIs();     ///< RFC 1572 response: SB NEW-ENVIRON IS DEVNAME VALUE <name> SE
 
     void sendWill(uint8_t opt);
     void sendWont(uint8_t opt);

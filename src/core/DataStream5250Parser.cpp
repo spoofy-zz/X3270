@@ -19,34 +19,30 @@ void DataStream5250Parser::processRecord(const std::vector<uint8_t>& record) {
     sohRemaining_ = 0;
     tdRemaining_  = 0;
 
-    // Detect and strip GDS header (6 bytes: len_hi, len_lo, 0x12, 0x00, opcode, 0x00).
-    // IMPORTANT: the opcode is *inside* the header, not in the payload.
-    // After stripping we must set the FSM state based on the opcode, not leave it
-    // at Command (which would misinterpret WCC1 as a command byte).
-    if (len >= 6) {
+    // Detect and strip GDS header.
+    // Java-confirmed format (XI5250Emulator.receivedEOR):
+    //   [0-1] = total len (big-endian)
+    //   [2]   = 0x12
+    //   [3]   = 0xA0
+    //   [4-5] = 0x00 0x00 (reserved)
+    //   [6]   = varHdrLen (typically 0x04)
+    //   [7]   = flags
+    //   [8]   = 0x00
+    //   [9]   = opcode  (OUTPUT_ONLY=0x02, PUT_GET=0x03, etc.)
+    //   [10+] = 5250 data payload (first byte = 5250 command, e.g. WTD=0x11)
+    // Total header = 6 + varHdrLen bytes (= 10 when varHdrLen=4).
+    if (len >= 10) {
         uint16_t encoded = (static_cast<uint16_t>(data[0]) << 8) | data[1];
-        if (data[2] == 0x12 && encoded == static_cast<uint16_t>(len)) {
-            uint8_t opcode = data[4];
-            data += 6;
-            len  -= 6;
-
-            switch (opcode) {
-            case CMD5250_CLEAR_UNIT:
-            case CMD5250_CLEAR_UNIT_ALT:
-                screen_.eraseAll();
-                if (unlockCb_) unlockCb_();
-                return;   // no payload
-            case CMD5250_WRITE_ERROR_CODE:
-                return;   // ignore
-            case CMD5250_WTD:
-                // Payload begins with WCC1 + WCC2, not a command byte.
-                if (len == 0) return;
-                state_ = ParseState::WCC1;
-                break;
-            default:
-                if (len == 0) return;
-                break;    // unknown opcode with payload: try as command stream
-            }
+        if (data[2] == 0x12 && data[3] == 0xA0 &&
+            encoded == static_cast<uint16_t>(len))
+        {
+            uint8_t varHdrLen = data[6];
+            size_t  hdrLen    = 6 + static_cast<size_t>(varHdrLen);
+            if (len <= hdrLen) return; // header only, no payload
+            data += hdrLen;
+            len  -= hdrLen;
+            // Payload first byte is the 5250 command byte — leave state_=Command
+            // so handleCommand() processes it normally.
         }
     }
 
@@ -112,39 +108,41 @@ void DataStream5250Parser::processRecord(const std::vector<uint8_t>& record) {
             break;
         case ParseState::SF_FFW2:
             currentFFW2_ = b;
-            // Check for FCW pairs: FFW2 bit 0 indicates one FCW follows
-            // For MVP, parse any trailing FCW pairs (each 2 bytes)
-            // FCW presence flags: FFW2 & 0x01 → one FCW pair; we skip them.
-            {
-                uint8_t attr = ffw1ToAttr(currentFFW1_);
-                screen_.startField(attr, 0x00, 0x00, 0x00);
-                // If MDT was set in FFW1, mark the field
-                if (currentFFW1_ & FFW1_MDT) {
-                    screen_.at(screen_.bufferPointer() > 0
-                                ? screen_.bufferPointer() - 1 : 0).attr |= 0x01; // FA_MDT
-                }
-            }
-            // FCW skipping: bit 0 of FFW2 signals one FCW pair (2 bytes)
+            // After FFW2, check if FCW pair follows (FCW[0] has 0x80 marker).
+            // We peek ahead: if next byte has (byte & 0xC0)==0x80, it's FCW.
+            // For simplicity, use bit 0 of FFW2 as FCW-present indicator per IBM ref.
             if (currentFFW2_ & 0x01) {
                 state_ = ParseState::SF_FCW_Hi;
             } else {
-                state_ = ParseState::Data;
+                state_ = ParseState::SF_ScreenAttr;
             }
             break;
         case ParseState::SF_FCW_Hi:
             state_ = ParseState::SF_FCW_Lo;
             break;
         case ParseState::SF_FCW_Lo:
+            state_ = ParseState::SF_ScreenAttr;
+            break;
+        case ParseState::SF_ScreenAttr:
+            // Screen attribute byte — consumed, colour applied later
+            state_ = ParseState::SF_LenHi;
+            break;
+        case ParseState::SF_LenHi:
+            // High byte of field length — stash for future use
+            state_ = ParseState::SF_LenLo;
+            break;
+        case ParseState::SF_LenLo: {
+            // Low byte of field length. Now emit the field into ScreenBuffer.
+            uint8_t attr = ffw1ToAttr(currentFFW1_);
+            screen_.startField(attr, 0x00, 0x00, 0x00);
+            if (currentFFW1_ & FFW1_MDT) {
+                int bp = screen_.bufferPointer();
+                int fa = (bp > 0) ? bp - 1 : 0;
+                screen_.at(fa).attr |= 0x01; // FA_MDT
+            }
             state_ = ParseState::Data;
             break;
-
-        case ParseState::ATTR_Byte:
-            // 5250 attribute byte: colour nibble in bits 5-2
-            // Map to IBM 3279 fg colour
-            currentFgColor_ = mapColor((b >> 2) & 0x07);
-            screen_.setCurrentFgColor(currentFgColor_);
-            state_ = ParseState::Data;
-            break;
+        }
 
         case ParseState::RA_Row:
             raRow_ = b;
@@ -168,6 +166,24 @@ void DataStream5250Parser::processRecord(const std::vector<uint8_t>& record) {
         case ParseState::EA_Col: {
             int dest = rowColToOffset(raRow_, b);
             if (dest >= 0) screen_.eraseUnprotectedToAddress(dest);
+            state_ = ParseState::Data;
+            break;
+        }
+
+        case ParseState::WEA_Skip:
+            // WEA has 2 bytes following (type + value); consume both by
+            // re-using sohRemaining_ as a 2-byte counter.
+            // On entry, sohRemaining_ is pre-set to 1 by handleDataByte (below).
+            if (--sohRemaining_ == 0) state_ = ParseState::Data;
+            break;
+
+        case ParseState::MC_Row:
+            raRow_ = b;
+            state_ = ParseState::MC_Col;
+            break;
+        case ParseState::MC_Col: {
+            int dest = rowColToOffset(raRow_, b);
+            if (dest >= 0) screen_.setBufferAddress(dest);
             state_ = ParseState::Data;
             break;
         }
@@ -212,27 +228,12 @@ void DataStream5250Parser::handleCommand(uint8_t cmd) {
 // ── Order dispatch inside WTD data stream ────────────────────────────────────
 
 void DataStream5250Parser::handleDataByte(uint8_t b) {
-    // In the 5250 data stream, bytes below 0x20 that match order codes are orders.
-    // Displayable EBCDIC starts at 0x40.  Bytes 0x20-0x3F are orders (some).
-    // Bytes 0x00-0x1F that don't match orders are written as spaces.
+    // Order bytes 0x01-0x1F per IBM 5250 Data Stream Programmer's Reference.
+    // Bytes 0x20-0x3F are colour/attribute bytes (treated as data chars).
+    // Bytes 0x40+ are displayable EBCDIC.
     switch (b) {
     case ORD5250_SOH:
         state_ = ParseState::SOH_Length;
-        break;
-    case ORD5250_TD:
-        state_ = ParseState::TD_LenHi;
-        break;
-    case ORD5250_SBA:
-        state_ = ParseState::SBA_Row;
-        break;
-    case ORD5250_SF:
-        state_ = ParseState::SF_FFW1;
-        break;
-    case ORD5250_ATTR:
-        state_ = ParseState::ATTR_Byte;
-        break;
-    case ORD5250_IC:
-        screen_.insertCursorHere();
         break;
     case ORD5250_RA:
         state_ = ParseState::RA_Row;
@@ -240,12 +241,42 @@ void DataStream5250Parser::handleDataByte(uint8_t b) {
     case ORD5250_EA:
         state_ = ParseState::EA_Row;
         break;
+    case ORD5250_TD:
+        state_ = ParseState::TD_LenHi;
+        break;
+    case ORD5250_SBA:
+        state_ = ParseState::SBA_Row;
+        break;
+    case ORD5250_WEA:
+        // Write Extended Attribute: 2 bytes follow (type + value), skip them
+        sohRemaining_ = 2;
+        state_ = ParseState::WEA_Skip;
+        break;
+    case ORD5250_IC:
+        screen_.insertCursorHere();
+        // state_ stays Data
+        break;
+    case ORD5250_MC:
+        state_ = ParseState::MC_Row;
+        break;
+    case ORD5250_WDSF:
+        // Write Display Structured Field: length-prefixed block (like SOH)
+        state_ = ParseState::SOH_Length;
+        break;
+    case ORD5250_SF:
+        state_ = ParseState::SF_FFW1;
+        break;
     default:
         if (b >= 0x40) {
             // Normal EBCDIC display character
             screen_.writeChar(b);
+        } else if (b >= 0x20) {
+            // Colour/attribute byte in range 0x20-0x3F.
+            // These are 5250 attribute characters that occupy a buffer position.
+            // For now write them as the attribute byte (renderer will color-map).
+            screen_.writeChar(b);
         }
-        // else: unrecognised control byte — skip silently
+        // else: unrecognised control byte < 0x20 — skip silently
         break;
     }
 }
@@ -257,17 +288,9 @@ uint8_t DataStream5250Parser::ffw1ToAttr(uint8_t ffw1) const {
 
     // Protected / bypass field
     if (ffw1 & FFW1_BYPASS) {
-        attr |= FA_PROTECTED | FA_NUMERIC; // skip (same as 3270 skip)
+        attr |= FA_PROTECTED | FA_NUMERIC; // bypass = protected skip field
     } else if (ffw1 & FFW1_SHIFT_NUM) {
         attr |= FA_NUMERIC;
-    }
-
-    // Display mode
-    uint8_t disp = ffw1 & FFW1_DISP_MASK;
-    if (disp == FFW1_DISP_INTEN) {
-        attr |= FA_INTENSIFIED;
-    } else if (disp == FFW1_DISP_NONE || disp == FFW1_DISP_SIGN) {
-        attr |= FA_NONDISPLAY;
     }
 
     // MDT

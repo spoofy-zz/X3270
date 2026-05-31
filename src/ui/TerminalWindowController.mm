@@ -117,7 +117,20 @@
         _session->setDataCallback([weakSelf](const std::vector<uint8_t>& record) {
             __strong auto s = weakSelf;
             if (!s) return;
+            // Debug: log every 5250 record to Console so we can see if data arrives
+            // and whether the GDS header bytes look correct.
+            if (!record.empty()) {
+                uint8_t b0 = record.size()>0 ? record[0] : 0;
+                uint8_t b1 = record.size()>1 ? record[1] : 0;
+                uint8_t b2 = record.size()>2 ? record[2] : 0;
+                uint8_t b3 = record.size()>3 ? record[3] : 0;
+                uint8_t b4 = record.size()>4 ? record[4] : 0;
+                uint8_t b5 = record.size()>5 ? record[5] : 0;
+                NSLog(@"[5250] record %zu bytes  GDS hdr: %02X %02X %02X %02X  opcode=%02X flags=%02X",
+                      record.size(), b0, b1, b2, b3, b4, b5);
+            }
             s->_parser5250->processRecord(record);
+            NSLog(@"[5250] after processRecord: bufPtr=%d", s->_screen->bufferPointer());
             dispatch_async(dispatch_get_main_queue(), ^{
                 __strong auto s2 = weakSelf;
                 if (s2) [s2->_termView screenDidUpdate];

@@ -35,7 +35,8 @@ bool TN5250Session::connect(const std::string& host, uint16_t port,
     // Reset negotiation state
     willBinary_ = doBinary_ = willEOR_ = doEOR_ = doTermType_ = false;
     sentWillBinary_ = sentDoBinary_ = sentWillEOR_ = sentDoEOR_ =
-    sentWillTermType_ = sentTerminalTypeIs_ = sentWillSGA_ = sentDoSGA_ = false;
+    sentWillTermType_ = sentTerminalTypeIs_ = sentWillSGA_ = sentDoSGA_ =
+    sentWillNewEnv_ = false;
     currentRecord_.clear();
     subnegBuf_.clear();
 
@@ -123,6 +124,18 @@ void TN5250Session::processByte(uint8_t byte) {
             if (!currentRecord_.empty()) {
                 if (dataCb_) dataCb_(currentRecord_);
                 currentRecord_.clear();
+            }
+            telnetState_ = TelnetState::Normal;
+            break;
+        case TN5250_GA:
+            // Go-Ahead: if SGA was NOT negotiated, treat as record terminator.
+            // If SGA IS active, this should not arrive; ignore it safely.
+            if (!currentRecord_.empty()) {
+                tryDispatchGdsRecord();  // try length-based first
+                if (!currentRecord_.empty()) {
+                    if (dataCb_) dataCb_(currentRecord_);
+                    currentRecord_.clear();
+                }
             }
             telnetState_ = TelnetState::Normal;
             break;
@@ -226,6 +239,16 @@ void TN5250Session::processIacCommand(uint8_t cmd, uint8_t opt) {
         }
         break;
 
+    case TN5250_OPT_NEW_ENVIRON:
+        // IBM i uses NEW-ENVIRON (RFC 1572) to obtain the 5250 workstation/device name.
+        // If we refuse (WONT), the server will not send the sign-on screen.
+        // Accept and reply with a device name in the SB IS response.
+        if (cmd == TN5250_DO) {
+            if (!sentWillNewEnv_) { sentWillNewEnv_ = true; sendWill(TN5250_OPT_NEW_ENVIRON); }
+        }
+        // Ignore WILL NEW-ENVIRON from server (we don't need server's env vars)
+        break;
+
     default:
         if (cmd == TN5250_DO)   sendWont(opt);
         if (cmd == TN5250_WILL) sendDont(opt);
@@ -238,11 +261,43 @@ void TN5250Session::processIacCommand(uint8_t cmd, uint8_t opt) {
 // ── Sub-negotiation ───────────────────────────────────────────────────────────
 void TN5250Session::processSubneg(const std::vector<uint8_t>& sb) {
     if (sb.size() < 2) return;
+
     if (sb[0] == TN5250_OPT_TERMINAL_TYPE && sb[1] == 0x01 /* SEND */) {
         doTermType_ = true;
         sendTerminalType();
         tryEnterDataMode();
+        return;
     }
+
+    // RFC 1572 / RFC 2877: IBM i sends SB NEW-ENVIRON SEND to request device name.
+    // SEND = 0x01; may be followed by a list of variable names (we ignore them
+    // and always respond with DEVNAME).
+    if (sb[0] == TN5250_OPT_NEW_ENVIRON && sb[1] == 0x01 /* SEND */) {
+        sendNewEnvironIs();
+    }
+}
+
+void TN5250Session::sendNewEnvironIs() {
+    // RFC 1572 NEW-ENVIRON IS response carrying the 5250 workstation device name.
+    // Format: IAC SB NEW-ENVIRON IS  USERVAR "DEVNAME" VALUE "X3270001"  IAC SE
+    //   IS      = 0x00
+    //   USERVAR = 0x03  (IBM-specific variables are USERVARs per RFC 1572)
+    //   VALUE   = 0x01
+    static const uint8_t IS      = 0x00;
+    static const uint8_t USERVAR = 0x03;
+    static const uint8_t VALUE   = 0x01;
+    static const char kVarName[] = "DEVNAME";
+    static const char kDevName[] = "X3270001"; // valid IBM i 8-char workstation name
+
+    std::vector<uint8_t> payload;
+    payload.push_back(TN5250_OPT_NEW_ENVIRON);
+    payload.push_back(IS);
+    payload.push_back(USERVAR);
+    for (const char* p = kVarName; *p; ++p) payload.push_back(static_cast<uint8_t>(*p));
+    payload.push_back(VALUE);
+    for (const char* p = kDevName; *p; ++p) payload.push_back(static_cast<uint8_t>(*p));
+
+    sendSb(payload);
 }
 
 void TN5250Session::sendTerminalType() {
@@ -278,8 +333,10 @@ void TN5250Session::enterDataMode() {
 // becomes a safe no-op (currentRecord_ is empty when IAC EOR fires).
 void TN5250Session::tryDispatchGdsRecord() {
     while (currentRecord_.size() >= GDS_HEADER_LENGTH) {
-        // Validate GDS magic at bytes 2-3
-        if (currentRecord_[2] != GDS_RECORD_TYPE || currentRecord_[3] != 0x00)
+        // Accept both 0x00 (our initial assumption) and 0xA0 (real IBM i) for byte 3
+        uint8_t b2 = currentRecord_[2];
+        uint8_t b3 = currentRecord_[3];
+        if (b2 != GDS_RECORD_TYPE || (b3 != 0x00 && b3 != 0xA0))
             break;
         uint16_t recLen = (static_cast<uint16_t>(currentRecord_[0]) << 8)
                         |  static_cast<uint16_t>(currentRecord_[1]);
