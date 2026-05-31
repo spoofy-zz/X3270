@@ -238,18 +238,21 @@ static NSColor *colorFor3270Code(uint8_t code) {
     [_backgroundColor setFill];
     NSRectFill(self.bounds);
 
-    if (!_screen) {
+    x3270::ScreenBuffer *screen = _screen;
+    x3270::KeyboardState *kbd = _kbd;
+    x3270::GraphicsBuffer *graphics = _graphics;
+    if (!screen) {
         return;
     }
 
-    int screenSize = _screen->size();
+    int screenSize = screen->size();
 
     // Draw each cell
     for (int row = 0; row < _rows; ++row) {
         for (int col = 0; col < _cols; ++col) {
             int pos = row * _cols + col;
             if (pos < 0 || pos >= screenSize) continue;
-            const x3270::Cell& cell = _screen->at(pos);
+            x3270::Cell cell = screen->at(pos);
 
             // Attribute positions are rendered as blanks (background colour only)
             if (cell.isFA) continue;
@@ -319,12 +322,12 @@ static NSColor *colorFor3270Code(uint8_t code) {
     }
 
     // Draw block cursor (always visible during blink-on phase, regardless of lock state)
-    if (_cursorVisible && _screen) {
-        int curPos = _screen->cursorPos();
+    if (_cursorVisible && screen) {
+        int curPos = screen->cursorPos();
         if (curPos < 0 || curPos >= screenSize) return;
         int curRow = curPos / _cols;
         int curCol = curPos % _cols;
-        const x3270::Cell& curCell = _screen->at(curPos);
+        x3270::Cell curCell = screen->at(curPos);
         CGFloat cx = curCol * _charW;
         CGFloat cy = self.bounds.size.height - (curRow + 1) * _charH;
 
@@ -346,13 +349,13 @@ static NSColor *colorFor3270Code(uint8_t code) {
     }
 
     // Draw OIA (status bar)
-    [self drawOIA];
+    [self drawOIAWithScreen:screen keyboardState:kbd];
 
     // Draw GOCA graphics overlay (on top of text, below OIA)
-    if (_graphics && !_graphics->commands().empty()) {
+    if (graphics && !graphics->commands().empty()) {
         CGContextRef cgctx = [[NSGraphicsContext currentContext] CGContext];
         [self drawGraphicsOverlay:cgctx];
-        _graphics->clearDirty();
+        graphics->clearDirty();
     }
 }
 
@@ -497,7 +500,8 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     (void)inLinePath; // suppress unused-variable warning
 }
 
-- (void)drawOIA {
+- (void)drawOIAWithScreen:(x3270::ScreenBuffer *)screen
+            keyboardState:(x3270::KeyboardState *)kbd {
     CGFloat oiaY = self.bounds.size.height - (_rows + 1) * _charH;
     // Separator line
     [[NSColor colorWithWhite:0.4 alpha:1.0] setFill];
@@ -510,8 +514,8 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     };
 
     NSString *statusStr = @"";
-    if (_kbd) {
-        switch (_kbd->lockReason()) {
+    if (kbd) {
+        switch (kbd->lockReason()) {
         case x3270::KeyboardState::LockReason::None:
             statusStr = @"";
             break;
@@ -525,15 +529,15 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
             statusStr = @"X OERR";
             break;
         }
-        if (_kbd->isInsertMode()) {
+        if (kbd->isInsertMode()) {
             statusStr = [statusStr stringByAppendingString:@" INS"];
         }
     }
 
     // Cursor position (1-based)
     NSString *cursorInfo = @"";
-    if (_screen) {
-        int pos = _screen->cursorPos();
+    if (screen) {
+        int pos = screen->cursorPos();
         cursorInfo = [NSString stringWithFormat:@"%03d/%03d",
                       pos / _cols + 1, pos % _cols + 1];
     }

@@ -69,6 +69,8 @@
 }
 
 - (void)dealloc {
+    [_termView setGraphicsBuffer:nullptr];
+    [_termView setScreenBuffer:nullptr keyboardState:nullptr];
     if (_session) _session->disconnect();
     if (_networkThread.joinable()) _networkThread.detach();
     // ARC handles object release
@@ -245,6 +247,8 @@
 }
 
 - (void)windowWillClose:(NSNotification*)notification {
+    [_termView setGraphicsBuffer:nullptr];
+    [_termView setScreenBuffer:nullptr keyboardState:nullptr];
     if (_session) _session->disconnect();
 }
 
