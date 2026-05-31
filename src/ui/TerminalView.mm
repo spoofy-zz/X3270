@@ -9,12 +9,26 @@
 NSString * const kPref3270FontEnabled = @"use3270Font";
 /// NSUserDefaults key – double; terminal font size in points
 NSString * const kPrefTerminalFontSize = @"terminalFontSize";
+/// NSUserDefaults key – dictionary; key mapping for important 3270 functions
+NSString * const kPrefKeyboardMappings = @"keyboardMappings";
 
 static const CGFloat kMinTerminalFontSize = 8.0;
 static const CGFloat kMaxTerminalFontSize = 32.0;
 
 static CGFloat clampTerminalFontSize(CGFloat size) {
     return MIN(kMaxTerminalFontSize, MAX(kMinTerminalFontSize, size));
+}
+
+static NSDictionary<NSString*, NSString*> *defaultKeyboardMappings(void) {
+    return @{
+        @"enter":  @"return",
+        @"return": @"shift-return",
+        @"clear":  @"option-escape",
+        @"reset":  @"escape",
+        @"pa1":    @"option-1",
+        @"pa2":    @"option-2",
+        @"pa3":    @"option-3",
+    };
 }
 
 // ── 3270-font loader (called once) ───────────────────────────────────────────
@@ -555,6 +569,10 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     // Let Cmd+Fkey pass through so app-level shortcuts (⌘Q, ⌘N …) still work.
     if (modifiers & NSEventModifierFlagCommand) return [super performKeyEquivalent:event];
 
+    if ([self handleMappedKeyWithSignature:[self keySignatureForEvent:event]]) {
+        return YES;
+    }
+
     unichar key = [event.charactersIgnoringModifiers length] > 0
                   ? [event.charactersIgnoringModifiers characterAtIndex:0] : 0;
     BOOL shiftDown = (modifiers & NSEventModifierFlagShift) != 0;
@@ -570,8 +588,66 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     return [super performKeyEquivalent:event];
 }
 
+- (NSString *)keySignatureForEvent:(NSEvent *)event {
+    NSUInteger modifiers = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+    if (modifiers & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) return nil;
+
+    unichar key = [event.charactersIgnoringModifiers length] > 0
+                  ? [event.charactersIgnoringModifiers characterAtIndex:0]
+                  : 0;
+    NSString *base = nil;
+    if (key == '\r' || key == '\n') base = @"return";
+    else if (key == 27) base = @"escape";
+    else if (key == '\t') base = @"tab";
+    else if (key == NSDeleteFunctionKey) base = @"delete";
+    else if (key == NSBackspaceCharacter || key == NSDeleteCharacter) base = @"backspace";
+    else if (key >= '1' && key <= '9') base = [NSString stringWithFormat:@"%C", key];
+    else if (key >= NSF1FunctionKey && key <= NSF12FunctionKey) {
+        base = [NSString stringWithFormat:@"f%d", (int)(key - NSF1FunctionKey + 1)];
+    }
+    if (!base) return nil;
+
+    NSMutableArray<NSString*> *parts = [NSMutableArray array];
+    if (modifiers & NSEventModifierFlagOption) [parts addObject:@"option"];
+    if (modifiers & NSEventModifierFlagShift) [parts addObject:@"shift"];
+    [parts addObject:base];
+    return [parts componentsJoinedByString:@"-"];
+}
+
+- (NSDictionary<NSString*, NSString*> *)effectiveKeyboardMappings {
+    NSMutableDictionary *m = [defaultKeyboardMappings() mutableCopy];
+    NSDictionary *stored = [[NSUserDefaults standardUserDefaults] dictionaryForKey:kPrefKeyboardMappings];
+    if (stored) [m addEntriesFromDictionary:stored];
+    return m;
+}
+
+- (BOOL)handleMappedKeyWithSignature:(NSString *)signature {
+    if (!signature || !_kbd) return NO;
+    NSDictionary<NSString*, NSString*> *m = [self effectiveKeyboardMappings];
+    BOOL handled = NO;
+
+    if ([m[@"enter"] isEqualToString:signature]) handled = _kbd->handleEnter();
+    else if ([m[@"return"] isEqualToString:signature]) handled = _kbd->handleNewLine();
+    else if ([m[@"clear"] isEqualToString:signature]) handled = _kbd->handleClear();
+    else if ([m[@"reset"] isEqualToString:signature]) handled = _kbd->handleReset();
+    else if ([m[@"pa1"] isEqualToString:signature]) handled = _kbd->handlePA(1);
+    else if ([m[@"pa2"] isEqualToString:signature]) handled = _kbd->handlePA(2);
+    else if ([m[@"pa3"] isEqualToString:signature]) handled = _kbd->handlePA(3);
+
+    if (handled) [self setNeedsDisplay:YES];
+    return handled;
+}
+
 - (void)keyDown:(NSEvent *)event {
     if (!_kbd) { [super keyDown:event]; return; }
+
+    NSString *signature = [self keySignatureForEvent:event];
+    if ([self handleMappedKeyWithSignature:signature]) {
+        return;
+    }
+    if (signature && [[defaultKeyboardMappings() allValues] containsObject:signature]) {
+        return;
+    }
 
     NSUInteger modifiers = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
     BOOL altDown   = (modifiers & NSEventModifierFlagOption)  != 0;

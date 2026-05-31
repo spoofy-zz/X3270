@@ -8,6 +8,8 @@
 extern NSString * const kPref3270FontEnabled;
 /// NSUserDefaults key – double; terminal font size in points.
 extern NSString * const kPrefTerminalFontSize;
+/// NSUserDefaults key – dictionary; key mapping for important 3270 functions.
+extern NSString * const kPrefKeyboardMappings;
 
 /// TerminalView renders the 3270 screen buffer as a character grid using
 /// Core Text.  It also handles all keyboard input and forwards it to
