@@ -196,13 +196,35 @@
         return;
     }
 
+    // Combo-box history labels are displayed as "host:port" or "host:port [SSL]".
+    // If such a label ends up in the editable host field, split it before DNS lookup.
+    BOOL hostLabelRequestedSSL = NO;
+    if ([host hasSuffix:@" [SSL]"]) {
+        hostLabelRequestedSSL = YES;
+        host = [[host substringToIndex:host.length - 6]
+                stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    }
+    NSRange colon = [host rangeOfString:@":" options:NSBackwardsSearch];
+    if (colon.location != NSNotFound &&
+        [host rangeOfString:@"]"].location == NSNotFound) {
+        NSString *maybePort = [host substringFromIndex:colon.location + 1];
+        NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
+        if (maybePort.length > 0 && [maybePort rangeOfCharacterFromSet:nonDigits].location == NSNotFound) {
+            _portField.stringValue = maybePort;
+            host = [[host substringToIndex:colon.location]
+                    stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            _hostCombo.stringValue = host;
+        }
+    }
+
     int port = _portField.intValue;
     if (port <= 0 || port > 65535) {
         _statusLabel.stringValue = @"Invalid port number.";
         return;
     }
 
-    BOOL useSSL = _sslCheckbox.state == NSControlStateValueOn;
+    BOOL useSSL = (_sslCheckbox.state == NSControlStateValueOn) || hostLabelRequestedSSL;
+    if (hostLabelRequestedSSL) _sslCheckbox.state = NSControlStateValueOn;
     NSString *caBundle = useSSL ? _caField.stringValue : @"";
 
     // Map code page selection

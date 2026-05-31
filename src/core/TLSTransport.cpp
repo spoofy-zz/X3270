@@ -42,7 +42,7 @@ static int tcpConnect(const std::string& host, uint16_t port, std::string& error
     struct addrinfo* res = nullptr;
     int rc = ::getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res);
     if (rc != 0) {
-        errorMsg = std::string("DNS lookup failed: ") + gai_strerror(rc);
+        errorMsg = "DNS lookup failed for '" + host + "': " + gai_strerror(rc);
         return -1;
     }
 
